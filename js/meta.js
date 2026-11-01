@@ -8,7 +8,7 @@
 window.APP_META = {
   name: '记忆小站',
   subtitle: '艾宾浩斯遗忘曲线记忆练习',
-  version: '1.8.0',
+  version: '1.7.2',
   build: '2026-11-01',
   author: '许琮-Stephen Hsu',
   contact: 'xucong@westair.cn',
@@ -19,7 +19,7 @@ window.APP_META = {
    * 新版本在最上面；每次发版加一条即可，items 每条一句话，家长能看懂 */
   changelog: [
     {
-      ver: '1.8.0', date: '2026-11-01',
+      ver: '1.7.2', date: '2026-11-01',
       items: [
         '「声明」页新增版本更新记录（就是这里）',
         '更正页面上的发音说明：中文用内置音节音频，英语用浏览器语音引擎',
