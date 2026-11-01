@@ -236,6 +236,16 @@ async function runScenario(envLabel, opt) {
   ok(/第三方开源数据声明/.test(api.text()), '关于页含第三方开源数据声明');
   ok((api.text().match(/MIT/g) || []).length >= 5, '逐条列出了各数据集的 MIT 许可');
   ok(/Copyright \(c\) 2013 Sun Junyi/.test(api.text()), '保留了原作者的版权行');
+  // 版本更新记录（v1.8.0 新增）
+  ok(/版本更新记录/.test(api.text()), '关于页含「版本更新记录」');
+  ok(/v1\.7\.0/.test(api.text()), '更新记录里列出了历史版本 v1.7.0');
+  ok(/当前版本/.test(api.text()), '最新一条标了「当前版本」');
+  ok(/中文改成「读字 \+ 读一个组词」/.test(api.text()), '更新记录写清了中文发音的变化');
+  // 发音来源要写对：中文是内置音节音频，不是浏览器引擎
+  ok(/内置音节音频/.test(api.text()), '声明里说明中文发音来自内置音节音频');
+  ok(/Unlicense（公有领域）/.test(api.text()), '列出了公有领域授权的音节音频');
+  ok(!/朗读使用浏览器内置 Web Speech API，不包含第三方语音代码/.test(api.text()),
+    '不再出现「不含第三方语音资源」的旧说法');
   // 点遮罩关闭（内联 onclick 在 jsdom 的 outside-only 模式下不执行，遮罩监听是 JS 绑定的）
   api.$('#sheetMask').click();
   await wait(60);

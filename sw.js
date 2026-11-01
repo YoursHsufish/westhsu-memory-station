@@ -9,7 +9,7 @@
  * 云端 API（/.cloud/**）一律不拦截，直接走网络。
  * 学习数据始终在 localStorage，与本缓存无关。
  */
-const CACHE = 'ebbinghaus-kids-v13';
+const CACHE = 'ebbinghaus-kids-v14';
 const ASSETS = [
   './',
   './index.html',

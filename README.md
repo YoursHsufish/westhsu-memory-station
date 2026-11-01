@@ -123,8 +123,8 @@ ebbinghaus-kids/            ← 本目录即"线上发布目录"，只放运行�
     ├── build-py-data.py    生成 data-py.js
     ├── build-audio.py      下载/转码拼音音节音频 + 生成 py-dict.js
     ├── fetch-data.sh       下载重建词库所需原始数据
-    ├── test-app.mjs        功能回归（69 项）
-    ├── test-scenario.mjs   验收测试：建档/年级/六功能/切换（3 环境 × 53 项）
+    ├── test-app.mjs        功能回归（71 项）
+    ├── test-scenario.mjs   验收测试：建档/年级/六功能/切换（3 环境 × 65 项）
     ├── test-relearn.mjs    当日重学循环验证（25 项）
     ├── test-print.mjs      复习单 / 重点练清单（29 项）
     ├── test-speech.mjs     发音：拼音转音节、词语连读、TTS 回退（31 项）
@@ -162,8 +162,8 @@ ebbinghaus-kids/            ← 本目录即"线上发布目录"，只放运行�
 
 **开发者测试**
 ```bash
-NODE_PATH="<node_modules 路径>" node _tools/test-app.mjs        # 69 项功能回归
-NODE_PATH="<node_modules 路径>" node _tools/test-scenario.mjs   # 174 项验收（3 环境）
+NODE_PATH="<node_modules 路径>" node _tools/test-app.mjs        # 71 项功能回归
+NODE_PATH="<node_modules 路径>" node _tools/test-scenario.mjs   # 195 项验收（3 环境）
 NODE_PATH="<node_modules 路径>" node _tools/test-relearn.mjs    # 25 项当日重学 + 重点练判定
 NODE_PATH="<node_modules 路径>" node _tools/test-storage.mjs    # 42 项存档保护验证
 NODE_PATH="<node_modules 路径>" node _tools/test-migrate.mjs    # 27 项换浏览器搬存档验证
@@ -174,7 +174,7 @@ NODE_PATH="<node_modules 路径>" node _tools/test-sync.mjs       # 37 项同步
 NODE_PATH="<node_modules 路径>" node _tools/test-strings.mjs    # 17 项文案表回退
 NODE_PATH="<node_modules 路径>" node _tools/test-admin.mjs      # 26 项管理后台
 ```
-最近一次（v1.7.1）：**69 + 174 + 25 + 42 + 27 + 29 + 31 + 61 + 37 + 17 + 26 = 538 项全部通过，0 失败，0 个 JS 运行期错误**。验收覆盖：建档「测试」（一年级）与「测试1」（三年级）、一年级范围不越级、六项练习逐一作答落库、拼音声调对/错的判定、切换小朋友数据隔离、改六年级后范围扩大且记录保留、备份导出、**同一张卡连错 3 次仍在当天重现并最终答对才结束**、退出即放弃。
+最近一次（v1.8.0）：**71 + 195 + 25 + 42 + 27 + 29 + 31 + 61 + 37 + 17 + 26 = 561 项全部通过，0 失败，0 个 JS 运行期错误**。验收覆盖：建档「测试」（一年级）与「测试1」（三年级）、一年级范围不越级、六项练习逐一作答落库、拼音声调对/错的判定、切换小朋友数据隔离、改六年级后范围扩大且记录保留、备份导出、**同一张卡连错 3 次仍在当天重现并最终答对才结束**、退出即放弃。
 
 **重建词库**
 ```bash

@@ -921,7 +921,8 @@
       '<span class="chev-r">›</span>' +
       '</div></button>' +
       '<div style="font-size:12px;color:var(--ink-3);line-height:1.8;padding:0 6px 6px">' +
-      '本地随时可用，登录后自动同步；换设备先用「导出备份」再导入也可。语音由浏览器内置引擎提供。' +
+      '本地随时可用，登录后自动同步；换设备先用「导出备份」再导入也可。' +
+      '中文发音用内置音节音频（离线也能读），英语用浏览器自带的语音引擎。' +
       '</div>';
 
     view.innerHTML = html;
@@ -1533,10 +1534,13 @@
     { name: 'hanziDB 汉字使用频率', use: '汉字分组排序', repo: 'ruddfawcett/hanziDB.csv', license: 'MIT', copyright: 'Copyright (c) 2017 Rudd Fawcett' },
     { name: 'chinese-dictionary 汉语字典数据', use: '拼音与释义', repo: 'mapull/chinese-dictionary', license: 'MIT', copyright: 'Copyright (c) 2021 码谱' },
     { name: '中华新华字典数据库', use: '部首与笔画', repo: 'pwxcoo/chinese-xinhua', license: 'MIT', copyright: 'Copyright (c) 2018 PWXCOO' },
-    { name: 'jieba 中文分词词典', use: '组词词频排序', repo: 'fxsjy/jieba', license: 'MIT', copyright: 'Copyright (c) 2013 Sun Junyi' }
+    { name: 'jieba 中文分词词典', use: '组词词频排序', repo: 'fxsjy/jieba', license: 'MIT', copyright: 'Copyright (c) 2013 Sun Junyi' },
+    { name: '普通话拼音音节音频', use: '中文与词语发音（内置 766 个音节）', repo: 'davinfifield/mp3-chinese-pinyin-sound', license: 'Unlicense（公有领域）', copyright: '已捐入公有领域，可自由使用' },
+    { name: 'pypinyin 汉语拼音库', use: '组词补拼音（仅生成词库时使用，不随软件分发）', repo: 'mozillazg/python-pinyin', license: 'MIT', copyright: 'Copyright (c) 2016 mozillazg' }
   ];
 
   function openAbout() {
+    var LOG = (META.changelog || []);
     sheet.innerHTML = '<div class="sheet-handle"></div>' +
       '<div style="text-align:center;padding:6px 0 2px">' +
       '<div style="font-size:44px">🌱</div>' +
@@ -1552,10 +1556,27 @@
       '<div class="row-sub">本软件以 ' + esc(META.license) + ' 许可发布　' + esc(META.copyright) + ' ' + esc(META.author) + '</div></div></div>' +
       '<div class="row"><div class="row-main"><div class="row-title">运行方式</div>' +
       '<div class="row-sub">网页 + 云端账号；不登录只存本机，登录后同步上云、仅本人可见</div></div></div>' +
+      '<div class="row"><div class="row-main"><div class="row-title">发音来源</div>' +
+      '<div class="row-sub">中文：随软件内置的拼音音节音频（离线可用）；英语：浏览器自带的语音引擎</div></div></div>' +
       '</div>' +
+      // ---------- 版本更新记录 ----------
+      '<div class="section-title" style="margin:18px 0 8px"><h2 style="font-size:14px">版本更新记录</h2></div>' +
+      (LOG.length ? '<div class="list">' + LOG.map(function (c) {
+        var cur = String(c.ver) === String(META.version);
+        return '<div class="row" style="align-items:flex-start;padding:11px 14px"><div class="row-main">' +
+          '<div class="row-title" style="font-size:13.5px">v' + esc(c.ver) +
+          (c.date ? '<span style="font-size:11.5px;color:var(--ink-3);font-weight:600;margin-left:8px">' + esc(c.date) + '</span>' : '') +
+          (cur ? '<span class="chip mint" style="font-size:10.5px;margin-left:6px;padding:2px 7px">当前版本</span>' : '') +
+          '</div>' +
+          (c.items || []).map(function (it) {
+            return '<div class="row-sub" style="font-size:12px;line-height:1.65">· ' + esc(it) + '</div>';
+          }).join('') +
+          '</div></div>';
+      }).join('') + '</div>'
+        : '<div style="font-size:12px;color:var(--ink-3)">暂无记录。</div>') +
       '<div class="section-title" style="margin:18px 0 8px"><h2 style="font-size:14px">第三方开源数据声明</h2></div>' +
       '<div style="font-size:12px;color:var(--ink-3);line-height:1.7;margin-bottom:8px">' +
-      '下列数据集以 MIT 许可使用，版权归原作者所有。本软件仅使用其数据，未修改或再分发其源代码。' +
+      '下列数据集分别以 MIT 或 Unlicense（公有领域）许可使用，版权归原作者所有。本软件仅使用其数据，未修改或再分发其源代码。' +
       '</div>' +
       '<div class="list">' + THIRD_PARTY.map(function (t) {
         return '<div class="row" style="padding:11px 14px"><div class="row-main">' +
@@ -1565,8 +1586,8 @@
           '</div></div>';
       }).join('') + '</div>' +
       '<div style="font-size:12px;color:var(--ink-3);line-height:1.7;margin-top:12px">' +
-      '朗读使用浏览器内置 Web Speech API，不包含第三方语音代码；英语词库按课程标准的词汇范围自行整理。' +
-      '完整声明见随附的 THIRD-PARTY-NOTICES.md。</div>' +
+      '中文发音使用上述「普通话拼音音节音频」（公有领域），不是第三方语音引擎；英语发音使用浏览器内置的 Web Speech API。' +
+      '英语词库按课程标准的词汇范围自行整理。完整声明见随附的 THIRD-PARTY-NOTICES.md。</div>' +
       '<div style="height:14px"></div>' +
       '<button class="btn btn-primary btn-block btn-lg" onclick="document.getElementById(\'sheetMask\').hidden=true">关闭</button>';
     sheetMask.hidden = false;
