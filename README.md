@@ -128,6 +128,9 @@ ebbinghaus-kids/            ← 本目录即"线上发布目录"，只放运行�
     ├── test-relearn.mjs    当日重学循环验证（25 项）
     ├── test-print.mjs      复习单 / 重点练清单（29 项）
     ├── test-speech.mjs     发音：拼音转音节、词语连读、TTS 回退（31 项）
+    ├── test-devpreview.mjs 本地预览自动登录（25 项）
+    ├── dev-preview.mjs     本地预览服务（注入假云端，自动登录）
+    ├── dev/mock-cloud.js   假云端（只在本机预览里加载）
     ├── test-storage.mjs    存档保护验证（42 项）
     ├── test-migrate.mjs    换浏览器搬存档验证（27 项）
     ├── test-cloud.mjs      云端同步逻辑验证（61 项）
@@ -160,6 +163,25 @@ ebbinghaus-kids/            ← 本目录即"线上发布目录"，只放运行�
 
 即使存储完全不可用也不会崩：退化为"本次打开有效"的临时模式并持续提示。
 
+**发布前本地预览（自动以管理员登录，不用收验证码）**
+
+双击 `本地预览-自动登录.bat`，或手动：
+
+```bash
+node _tools/dev-preview.mjs            # 打开 http://127.0.0.1:8787/
+```
+
+- 页面顶部会出现深色「本地预览」条：已自动登录 **xucong@westair.cn（管理员）**；
+- 云端是**本机假云端**（`localStorage.ebbinghaus.kids.devcloud`），**不会写正式数据**，
+  所以可以随便建档案、随便点同步，绝不会污染孩子真实进度；
+- 想只看未登录效果：地址加 `?devloggedout=1`；
+- 想让预览里出现真实档案：把「我的 → 导出备份」的 JSON 放到
+  `D://AIagent//_private//dev-seed.json`，首次打开会自动灌进假云端；
+- 原理：`_tools/dev-preview.mjs` 只在**响应时**往 HTML 里插一行
+  `<script src="/_dev/mock-cloud.js">`，磁盘上的 `index.html` 一个字都不改，
+  所以正式发布物里不含任何假登录代码。
+- 测试：`node _tools/test-devpreview.mjs`（25 项，覆盖自动登录/沙箱读写/未登录开关/管理后台）。
+
 **开发者测试**
 ```bash
 NODE_PATH="<node_modules 路径>" node _tools/test-app.mjs        # 71 项功能回归
@@ -169,12 +191,13 @@ NODE_PATH="<node_modules 路径>" node _tools/test-storage.mjs    # 42 项存档
 NODE_PATH="<node_modules 路径>" node _tools/test-migrate.mjs    # 27 项换浏览器搬存档验证
 NODE_PATH="<node_modules 路径>" node _tools/test-print.mjs      # 29 项复习单 / 重点练清单
 NODE_PATH="<node_modules 路径>" node _tools/test-speech.mjs     # 31 项发音（音节拼接 / TTS 回退）
+NODE_PATH="<node_modules 路径>" node _tools/test-devpreview.mjs # 25 项本地预览自动登录
 NODE_PATH="<node_modules 路径>" node _tools/test-cloud.mjs      # 61 项云端同步验证
 NODE_PATH="<node_modules 路径>" node _tools/test-sync.mjs       # 37 项同步页 / 编辑器
 NODE_PATH="<node_modules 路径>" node _tools/test-strings.mjs    # 17 项文案表回退
 NODE_PATH="<node_modules 路径>" node _tools/test-admin.mjs      # 26 项管理后台
 ```
-最近一次（v1.7.2）：**71 + 195 + 25 + 42 + 27 + 29 + 31 + 61 + 37 + 17 + 26 = 561 项全部通过，0 失败，0 个 JS 运行期错误**。验收覆盖：建档「测试」（一年级）与「测试1」（三年级）、一年级范围不越级、六项练习逐一作答落库、拼音声调对/错的判定、切换小朋友数据隔离、改六年级后范围扩大且记录保留、备份导出、**同一张卡连错 3 次仍在当天重现并最终答对才结束**、退出即放弃。
+最近一次（v1.7.2）：**71 + 195 + 25 + 42 + 27 + 29 + 31 + 25 + 61 + 37 + 17 + 26 = 586 项全部通过，0 失败，0 个 JS 运行期错误**。验收覆盖：建档「测试」（一年级）与「测试1」（三年级）、一年级范围不越级、六项练习逐一作答落库、拼音声调对/错的判定、切换小朋友数据隔离、改六年级后范围扩大且记录保留、备份导出、**同一张卡连错 3 次仍在当天重现并最终答对才结束**、退出即放弃。
 
 **重建词库**
 ```bash
