@@ -8,7 +8,7 @@
 window.APP_META = {
   name: '记忆小站',
   subtitle: '艾宾浩斯遗忘曲线记忆练习',
-  version: '1.7.0',
+  version: '1.7.1',
   build: '2026-11-01',
   author: '许琮-Stephen Hsu',
   contact: 'xucong@westair.cn',

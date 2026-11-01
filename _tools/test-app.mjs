@@ -141,6 +141,11 @@ async function main() {
   console.log('\n=== 记忆小站 · 无头集成测试 ===\n');
   const w = boot();
 
+  // 只用 memory-station 这一个网址：页面里不该再出现「已升级到新版」的横幅
+  ok(!w.document.getElementById('upgradeBar'), 'T0 页面上没有「已升级到新版」横幅');
+  ok(!/a4e1f625|已升级到新版/.test(w.document.documentElement.outerHTML),
+    'T0 页面源码里没有新站链接与新站提示');
+
   // T1 首次进入
   ok(/先给小朋友建个档案吧/.test(text(w)), 'T1 首次进入显示建档引导');
   ok($(w, '#tabbar').style.display === 'none', 'T1 无档案时隐藏底部导航');

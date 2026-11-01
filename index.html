@@ -8,32 +8,9 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/icon.svg" />
-<link rel="stylesheet" href="css/app.css?v=1.7.0" />
+<link rel="stylesheet" href="css/app.css?v=1.7.1" />
 </head>
 <body>
-<!-- 旧域名升级提示：只在旧地址显示，新版地址不显示（见下方脚本） -->
-<div id="upgradeBar" hidden></div>
-<script>
-(function () {
-  var OLD_HOST = /^memory-station\.app\.workbuddy\.host$/;
-  var NEW_URL = 'https://a4e1f625ef29cfad5.app.workbuddy.host/?sharecode=XZV6RVRO7O';
-  if (!OLD_HOST.test(location.hostname)) return;
-
-  var bar = document.getElementById('upgradeBar');
-  if (!bar) return;
-  bar.hidden = false;
-  bar.style.cssText = 'position:relative;z-index:60;display:flex;align-items:center;gap:10px;flex-wrap:wrap;' +
-    'padding:10px 14px;background:linear-gradient(90deg,#fff4e5,#ffe9d6);border-bottom:1px solid #ffd7ae;' +
-    'font-size:13px;line-height:1.6;color:#8a4b12;';
-  bar.innerHTML =
-    '<span style="flex:1;min-width:220px">' +
-    '<b>本应用已升级到新版</b>，请把下面的新链接加入收藏（旧链接仍可用，但将在一段时间后彻底下线）。' +
-    '<br><a href="' + NEW_URL + '" style="color:#c2410c;font-weight:700;word-break:break-all">' + NEW_URL + '</a>' +
-    '</span>' +
-    '<a href="' + NEW_URL + '" style="flex:none;background:#c2410c;color:#fff;text-decoration:none;' +
-    'padding:7px 14px;border-radius:9px;font-weight:700;font-size:13px">前往新版 →</a>';
-})();
-</script>
 
 <div class="bg-deco" aria-hidden="true">
   <span class="blob blob-1"></span>
@@ -78,17 +55,17 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="js/meta.js?v=1.7.0"></script>
-<script src="js/strings.js?v=1.7.0"></script>
-<script src="js/data-en.js?v=1.7.0"></script>
-<script src="js/data-zh.js?v=1.7.0"></script>
-<script src="js/data-py.js?v=1.7.0"></script>
-<script src="js/py-dict.js?v=1.7.0"></script>
-<script src="js/audio-manifest.js?v=1.7.0"></script>
-<script src="js/srs.js?v=1.7.0"></script>
-<script src="js/store.js?v=1.7.0"></script>
-<script src="js/speech.js?v=1.7.0"></script>
-<script src="js/cloud.js?v=1.7.0"></script>
-<script src="js/app.js?v=1.7.0"></script>
+<script src="js/meta.js?v=1.7.1"></script>
+<script src="js/strings.js?v=1.7.1"></script>
+<script src="js/data-en.js?v=1.7.1"></script>
+<script src="js/data-zh.js?v=1.7.1"></script>
+<script src="js/data-py.js?v=1.7.1"></script>
+<script src="js/py-dict.js?v=1.7.1"></script>
+<script src="js/audio-manifest.js?v=1.7.1"></script>
+<script src="js/srs.js?v=1.7.1"></script>
+<script src="js/store.js?v=1.7.1"></script>
+<script src="js/speech.js?v=1.7.1"></script>
+<script src="js/cloud.js?v=1.7.1"></script>
+<script src="js/app.js?v=1.7.1"></script>
 </body>
 </html>
