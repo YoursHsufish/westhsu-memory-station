@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#f5f7ff" />
+<title>记忆小站 · 遗忘曲线单词卡</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="assets/icon.svg" />
+<link rel="stylesheet" href="css/app.css?v=1.5.7" />
+</head>
+<body>
+<!-- 旧域名升级提示：只在旧地址显示，新版地址不显示（见下方脚本） -->
+<div id="upgradeBar" hidden></div>
+<script>
+(function () {
+  var OLD_HOST = /^memory-station\.app\.workbuddy\.host$/;
+  var NEW_URL = 'https://a4e1f625ef29cfad5.app.workbuddy.host/?sharecode=XZV6RVRO7O';
+  if (!OLD_HOST.test(location.hostname)) return;
+
+  var bar = document.getElementById('upgradeBar');
+  if (!bar) return;
+  bar.hidden = false;
+  bar.style.cssText = 'position:relative;z-index:60;display:flex;align-items:center;gap:10px;flex-wrap:wrap;' +
+    'padding:10px 14px;background:linear-gradient(90deg,#fff4e5,#ffe9d6);border-bottom:1px solid #ffd7ae;' +
+    'font-size:13px;line-height:1.6;color:#8a4b12;';
+  bar.innerHTML =
+    '<span style="flex:1;min-width:220px">' +
+    '<b>本应用已升级到新版</b>，请把下面的新链接加入收藏（旧链接仍可用，但将在一段时间后彻底下线）。' +
+    '<br><a href="' + NEW_URL + '" style="color:#c2410c;font-weight:700;word-break:break-all">' + NEW_URL + '</a>' +
+    '</span>' +
+    '<a href="' + NEW_URL + '" style="flex:none;background:#c2410c;color:#fff;text-decoration:none;' +
+    'padding:7px 14px;border-radius:9px;font-weight:700;font-size:13px">前往新版 →</a>';
+})();
+</script>
+
+<div class="bg-deco" aria-hidden="true">
+  <span class="blob blob-1"></span>
+  <span class="blob blob-2"></span>
+  <span class="blob blob-3"></span>
+</div>
+
+<div id="app" class="app">
+  <header class="topbar" id="topbar">
+    <a class="brand" href="#/home">
+      <span class="brand-mark">🌱</span>
+      <span class="brand-text">记忆小站</span>
+    </a>
+    <div class="topbar-right">
+      <button class="profile-chip" id="profileChip" type="button" aria-label="当前小朋友">
+        <span class="avatar" id="profileAvatar">🐣</span>
+        <span class="profile-name" id="profileName">未选择</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="store-banner" id="storeBanner" hidden>
+    <span class="sb-ico">⚠️</span>
+    <span class="sb-text" id="storeBannerText">当前环境无法保存数据</span>
+    <button class="sb-btn" id="storeBannerBtn" type="button">怎么办？</button>
+  </div>
+
+  <main id="view" class="view" tabindex="-1"></main>
+
+  <nav class="tabbar" id="tabbar">
+    <a class="tab" href="#/home" data-tab="home"><span class="tab-ico">🏠</span><span>首页</span></a>
+    <a class="tab" href="#/study" data-tab="study"><span class="tab-ico">🎯</span><span>学习</span></a>
+    <a class="tab" href="#/progress" data-tab="progress"><span class="tab-ico">📈</span><span>进度</span></a>
+    <a class="tab" href="#/me" data-tab="me"><span class="tab-ico">🧒</span><span>我的</span></a>
+  </nav>
+</div>
+
+<!-- 全局浮层 -->
+<div class="sheet-mask" id="sheetMask" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="js/meta.js?v=1.5.7"></script>
+<script src="js/strings.js?v=1.5.7"></script>
+<script src="js/data-en.js?v=1.5.7"></script>
+<script src="js/data-zh.js?v=1.5.7"></script>
+<script src="js/data-py.js?v=1.5.7"></script>
+<script src="js/srs.js?v=1.5.7"></script>
+<script src="js/store.js?v=1.5.7"></script>
+<script src="js/speech.js?v=1.5.7"></script>
+<script src="js/cloud.js?v=1.5.7"></script>
+<script src="js/app.js?v=1.5.7"></script>
+</body>
+</html>

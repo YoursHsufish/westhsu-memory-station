@@ -1,0 +1,9 @@
+# 构建产物（由 _tools/build-single.mjs 生成，可随时重建）
+记忆小站.html
+记忆小站-v*.html
+
+# 依赖与系统文件
+node_modules/
+.DS_Store
+Thumbs.db
+*.log

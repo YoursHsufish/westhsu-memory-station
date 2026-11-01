@@ -1,0 +1,566 @@
+/*!
+ * cloud.js —— 可选的云端同步层（本地优先，云端兜底）
+ *
+ * 设计原则：
+ *   1. 本地存档永远是"主副本"，云端是"跨设备副本"。断网 / 未登录 / 云端故障时，
+ *      应用完全照常可用，孩子的进度不会因为网络问题丢失。
+ *   2. 只在两份数据都拿到手时才做合并，合并按「卡片 last（最近学习日）较新者胜」
+ *      逐张比较，绝不整体覆盖，所以任何一侧都不会被另一侧的无脑覆盖吃掉。
+ *   3. 用户身份由云端认证提供，数据隔离由数据库行级安全（RLS）在服务端强制，
+ *      前端拿不到、也不该拿到别人的数据。
+ *
+ * 依赖：@tencent-ai/workbuddy-cloud-sdk（CDN 形式，按需加载，未登录不下载）
+ */
+(function (global) {
+  'use strict';
+
+  /* ---------- 公开配置：仅这几项可以出现在前端（服务端另做 Origin 校验） ---------- */
+  var CFG = {
+    // 云端网关按「Origin + 分享码 Cookie」鉴权，跨域请求会被拦成 403（浏览器只报 Failed to fetch）。
+    // 所以 endpoint 必须跟随当前访问域名，绝不能写死某个域名。
+    // 云端白名单内的旧域名直连；其它域名走本站 server.js 的 /api/cloud 转发（平台网关独占 /.cloud/ 路径）。
+    endpoint: (function () {
+      try {
+        var o = global.location.origin;
+        if (!/^https?:\/\//.test(o)) return '';
+        if (/^https:\/\/memory-station\.app\.workbuddy\.host$/.test(o)) return o;
+        return o + '/api/cloud';
+      } catch (e) { /* ignore */ }
+      return '';
+    })(),
+    oauthRelayBaseUrl: 'https://www.workbuddy.cn/v2/as/genie-baas/oauth',
+    publishableKey: 'wbpk_Wdb9yl8UHSyf3kFACPhq2p_oZ9g5s3f34q3jKRkM9PFRZUqDUkqsFuf'
+  };
+  var SDK_URL = 'https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js';
+  var TABLE = 'kid_profiles';
+  var PUSH_DELAY = 1200;      // 本地改动后多久推送（合并连续答题）
+  var SESSION_KEY = 'ebbinghaus.kids.cloud';
+
+  var client = null;
+  var sdkPromise = null;
+  var session = null;
+  var applying = false;       // 正在把云端数据写回本地，期间不触发推送
+  var pushTimer = null;
+  var pushing = false;
+  var pendingPush = false;
+  var state = 'local';        // local | signedout | syncing | synced | offline | error
+  var lastError = '';
+  var lastSyncAt = 0;
+  var listeners = [];
+  var inflight = null;
+
+  function emit() {
+    var snap = status();
+    listeners.forEach(function (fn) { try { fn(snap); } catch (e) {} });
+  }
+
+  function setState(s, err) {
+    state = s;
+    lastError = err ? String(err.message || err) : '';
+    emit();
+  }
+
+  /* ---------- 能力判断 ---------- */
+  /** SDK 的登录态依赖浏览器 Origin；file:// 双击打开时 Origin 为 null，云端会拒绝，故直接禁用 */
+  function originUsable() {
+    try { return /^https?:$/.test(global.location.protocol); } catch (e) { return false; }
+  }
+
+  function configured() {
+    return !!(CFG.endpoint && CFG.publishableKey);
+  }
+
+  /* ---------- 按需加载 SDK ---------- */
+  function loadSDK() {
+    if (global.WorkBuddyCloud) return Promise.resolve(global.WorkBuddyCloud);
+    if (sdkPromise) return sdkPromise;
+    sdkPromise = new Promise(function (resolve, reject) {
+      var el = global.document.createElement('script');
+      el.src = SDK_URL;
+      el.async = true;
+      el.onload = function () {
+        if (global.WorkBuddyCloud) resolve(global.WorkBuddyCloud);
+        else { sdkPromise = null; reject(new Error('云端组件加载后不可用')); }
+      };
+      el.onerror = function () {
+        sdkPromise = null;
+        reject(new Error('云端组件加载失败，请检查网络后重试'));
+      };
+      global.document.head.appendChild(el);
+    });
+    return sdkPromise;
+  }
+
+  function ensureClient() {
+    if (client) return Promise.resolve(client);
+    return loadSDK().then(function (WB) {
+      client = WB.createWorkBuddyCloud({
+        endpoint: CFG.endpoint,
+        oauthRelayBaseUrl: CFG.oauthRelayBaseUrl,
+        publishableKey: CFG.publishableKey,
+        fetch: bridgeFetch
+      });
+      return client;
+    });
+  }
+
+  /**
+   * 平台网关会把请求里的 authorization 换成它自己的 CloudStudio 凭证，
+   * 云端登录 token 因此被顶掉 → 云端把请求当匿名处理 → 查表静默返回空数组。
+   * 这里把真实 token 另存一份到 x-ms-cloud-token，由 server.js 转发时还原。
+   */
+  function bridgeFetch(input, init) {
+    try {
+      init = init || {};
+      var hdrs = init.headers;
+      var auth = '';
+      if (hdrs && typeof hdrs.get === 'function') auth = hdrs.get('authorization') || '';
+      else if (hdrs) auth = hdrs.Authorization || hdrs.authorization || '';
+      if (auth) {
+        var out = (typeof global.Headers === 'function') ? new global.Headers(hdrs) : Object.assign({}, hdrs);
+        if (typeof out.set === 'function') out.set('x-ms-cloud-token', auth);
+        else out['x-ms-cloud-token'] = auth;
+        init.headers = out;
+      }
+    } catch (e) { /* 出错就按原样发 */ }
+    return global.fetch(input, init);
+  }
+
+  /* ---------- 数据转换 ---------- */
+  function profileToRow(p) {
+    return {
+      kid_key: p.id,
+      kid_name: p.name,
+      avatar: p.avatar || null,
+      settings: p.settings || {},
+      cards: p.data || {},
+      log: p.log || {},
+      version: 1,
+      updated_at: new Date().toISOString()
+    };
+  }
+
+  function rowToProfile(r) {
+    return {
+      id: r.kid_key,
+      name: r.kid_name,
+      avatar: r.avatar || '🐣',
+      created: r.created_at ? Date.parse(r.created_at) : Date.now(),
+      lastActive: Date.now(),
+      settings: r.settings || {},
+      data: r.cards || {},
+      log: r.log || {}
+    };
+  }
+
+  /** 单张卡：取最近学习日较新的一份；同一天则取阶段高的（更可能是准确的） */
+  function pickRec(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    var la = a.last || '', lb = b.last || '';
+    if (la !== lb) return la > lb ? a : b;
+    return (b.s || 0) > (a.s || 0) ? b : a;
+  }
+
+  /** 把 remote 合并进 local（逐卡），返回是否有变化 */
+  function mergeInto(local, remote) {
+    var changed = false;
+    var modules = Store.MODULES;
+
+    if (!local.settings || !Object.keys(local.settings).length) {
+      local.settings = remote.settings || {};
+      changed = true;
+    }
+    if (!local.data) local.data = {};
+
+    modules.forEach(function (m) {
+      var src = (remote.data && remote.data[m]) || {};
+      if (!local.data[m]) local.data[m] = {};
+      var dst = local.data[m];
+      Object.keys(src).forEach(function (id) {
+        var merged = pickRec(dst[id], src[id]);
+        if (merged !== dst[id]) { dst[id] = merged; changed = true; }
+      });
+    });
+
+    local.log = local.log || {};
+    Object.keys(remote.log || {}).forEach(function (d) {
+      if (!local.log[d]) { local.log[d] = remote.log[d]; changed = true; }
+    });
+
+    return changed;
+  }
+
+  /** 拉取云端全部档案 */
+  function pullRows() {
+    return ensureClient().then(function (c) {
+      return c.database.from(TABLE)
+        .select('kid_key, kid_name, avatar, settings, cards, log, created_at, updated_at')
+        .order('created_at', { ascending: true });
+    }).then(function (res) {
+      if (res.error) throw res.error;
+      return res.data || [];
+    });
+  }
+
+  /** 推送当前全部本地档案（按 owner_id + kid_key upsert，服务端 RLS 兜底） */
+  function pushRows() {
+    var rows = Store.listProfiles().map(profileToRow);
+    if (!rows.length) return Promise.resolve(0);
+    return ensureClient().then(function (c) {
+      return c.database.from(TABLE).upsert(rows, { onConflict: 'owner_id,kid_key' });
+    }).then(function (res) {
+      if (res.error) throw res.error;
+      return rows.length;
+    });
+  }
+
+  /* ---------- 同步主流程 ---------- */
+  function syncNow(opts) {
+    opts = opts || {};
+    if (!session) return Promise.resolve({ skipped: 'signedout' });
+    if (inflight) return inflight;
+
+    setState('syncing');
+    inflight = pullRows().then(function (rows) {
+      var mergedCount = 0;
+      applying = true;
+      try {
+        var byKey = {};
+        Store.listProfiles().forEach(function (p) { byKey[p.id] = p; });
+
+        rows.forEach(function (r) {
+          var remote = rowToProfile(r);
+          var local = byKey[r.kid_key];
+          if (!local) {
+            // 云端有、本地没有 → 直接落地（新设备首次登录走这里）
+            var st = Store.getState();
+            st.profiles.push(remote);
+            if (!st.active) st.active = remote.id;
+            mergedCount += 1;
+          } else if (mergeInto(local, remote)) {
+            mergedCount += 1;
+          }
+        });
+
+        if (mergedCount || opts.force) Store.save(true);
+      } finally {
+        applying = false;
+      }
+
+      return pushRows().then(function (n) {
+        lastSyncAt = Date.now();
+        setState('synced');
+        return { pulled: rows.length, merged: mergedCount, pushed: n, at: lastSyncAt };
+      });
+    }).catch(function (err) {
+      setState(isNetworkError(err) ? 'offline' : 'error', err);
+      throw err;
+    }).then(function (r) {
+      inflight = null;
+      return r;
+    }, function (e) {
+      inflight = null;
+      throw e;
+    });
+
+    return inflight;
+  }
+
+  function isNetworkError(err) {
+    var msg = String((err && (err.message || err.error_description || err.msg)) || '');
+    return /network|fetch|timeout|Failed to fetch|offline/i.test(msg) || (err && err.name === 'TypeError');
+  }
+
+  /** 只统计云端行数（用于同步后的核对，不写本地） */
+  function countRemote() {
+    return pullRows().then(function (rows) { return rows.length; });
+  }
+
+  /* ---------- 变更调度 ---------- */
+  function schedulePush() {
+    if (!session || applying) return;
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(function () {
+      pushTimer = null;
+      flushPush();
+    }, PUSH_DELAY);
+  }
+
+  function flushPush() {
+    if (!session) return Promise.resolve();
+    if (pushing) { pendingPush = true; return Promise.resolve(); }
+    pushing = true;
+    return pushRows().then(function () {
+      lastSyncAt = Date.now();
+      setState('synced');
+    }).catch(function (err) {
+      setState(isNetworkError(err) ? 'offline' : 'error', err);
+    }).then(function () {
+      pushing = false;
+      if (pendingPush) { pendingPush = false; return flushPush(); }
+    });
+  }
+
+  /* ---------- 认证 ---------- */
+  function restore() {
+    if (!originUsable() || !configured()) {
+      setState('local');
+      return Promise.resolve(false);
+    }
+    return ensureClient().then(function (c) {
+      return c.auth.getSession();
+    }).then(function (res) {
+      if (res.error && !/session|unauthenticated/i.test(String(res.error.message || ''))) {
+        // 网络类错误不改变本地可用性
+        setState(isNetworkError(res.error) ? 'offline' : 'signedout', res.error);
+        return false;
+      }
+      var s = res.data && res.data.session;
+      if (s) {
+        session = s;
+        setState('synced');
+        return syncNow({ force: false }).then(function () { return true; }, function () { return true; });
+      }
+      setState('signedout');
+      return false;
+    }).catch(function (err) {
+      setState(isNetworkError(err) ? 'offline' : 'error', err);
+      return false;
+    });
+  }
+
+  function sendCode(email) {
+    var addr = String(email || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
+      return Promise.reject(new Error('请填写正确的邮箱地址'));
+    }
+    if (!originUsable()) {
+      return Promise.reject(new Error('云端同步只能在线上版使用，请用发布后的网址打开'));
+    }
+    return ensureClient().then(function (c) {
+      return c.auth.sendOtp({ email: addr });
+    }).then(function (res) {
+      if (res.error) throw res.error;
+      return { email: addr, verificationId: res.data.verificationId, isExistingUser: !!res.data.isExistingUser };
+    });
+  }
+
+  function verifyCode(pending, code) {
+    if (!pending || !pending.verificationId) {
+      return Promise.reject(new Error('请先获取验证码'));
+    }
+    var token = String(code || '').replace(/\s/g, '');
+    if (!token) return Promise.reject(new Error('请填写收到的验证码'));
+
+    return ensureClient().then(function (c) {
+      return c.auth.verifyOtp({
+        email: pending.email,
+        verificationId: pending.verificationId,
+        isExistingUser: pending.isExistingUser,
+        token: token
+      }).then(function (res) {
+        if (res.error) throw normalizeAuthError(res.error, pending);
+        return resolveSession(c, res.data);
+      });
+    }).then(function (s) {
+      if (!s) {
+        throw new Error('验证已通过，但没能建立登录状态。请点「重新发送」再试一次。');
+      }
+      session = s;
+      try {
+        global.localStorage.setItem(SESSION_KEY, JSON.stringify({
+          email: pending.email,
+          at: Date.now()
+        }));
+      } catch (e) { /* 存储被禁用时忽略 */ }
+      setState('synced');
+      return { session: s, isExistingUser: pending.isExistingUser, email: pending.email };
+    });
+  }
+
+  /** SDK 的 verifyOtp 内部走 signIn（老用户）或 signUp（新用户），
+   *  两者都经由 postForSession 提交，返回结构在不同版本里不一致：
+   *  可能是 { data: { session } }，也可能 data 本身就是 session。
+   *  所以这里不猜结构，一律以 getSession() 为准（SDK 已经把会话落盘）。 */
+  function resolveSession(c, data) {
+    var fromData = function () {
+      if (!data) return null;
+      if (data.session) return data.session;
+      if (data.accessToken || data.access_token) return data;
+      if (data.user && data.user.id) return data;
+      return null;
+    };
+    return c.auth.getSession().then(function (r) {
+      var got = r && !r.error && r.data && r.data.session;
+      return got || fromData();
+    }, function () {
+      return fromData();
+    });
+  }
+
+  /** 把网关/后端的英文错误，换成能看懂、能动手的中文提示 */
+  function normalizeAuthError(err, pending) {
+    var raw = String((err && (err.message || err.error_description || err.msg)) || err || '');
+    if (/already|exists|registered|duplicate/i.test(raw)) {
+      var e1 = new Error('这个邮箱已经注册过了。请点「重新发送」拿一个新验证码，这次会以登录方式进入。');
+      e1.kind = 'exists';
+      return e1;
+    }
+    if (/expired|invalid.*code|code.*invalid|verification/i.test(raw)) {
+      return new Error('验证码不对或已过期（10 分钟内有效）。请点「重新发送」再试。');
+    }
+    return err instanceof Error ? err : new Error(raw || '登录失败，请重试');
+  }
+
+  /* ---------- 密码登录 / 找回密码（平台认证能力） ---------- */
+  function rememberEmail(email) {
+    try {
+      global.localStorage.setItem(SESSION_KEY, JSON.stringify({ email: email, at: Date.now() }));
+    } catch (e) { /* 存储被禁用时忽略 */ }
+  }
+
+  /** 邮箱 + 密码直接登录（账号需已设置过密码） */
+  function signInWithPassword(email, password) {
+    var addr = String(email || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
+      return Promise.reject(new Error('请填写正确的邮箱地址'));
+    }
+    if (!password) return Promise.reject(new Error('请输入密码'));
+    if (!originUsable()) {
+      return Promise.reject(new Error('云端登录只能在线上版使用，请用发布后的网址打开'));
+    }
+    var c;
+    return ensureClient().then(function (cl) {
+      c = cl;
+      return c.auth.signInWithPassword({ email: addr, password: String(password) });
+    }).then(function (res) {
+      if (res && res.error) throw normalizeAuthError(res.error, { email: addr });
+      return resolveSession(c, res && res.data);
+    }).then(function (s) {
+      if (!s) throw new Error('登录成功，但没能建立登录状态，请重试');
+      session = s;
+      rememberEmail(addr);
+      setState('synced');
+      return { session: s, email: addr, isExistingUser: true };
+    });
+  }
+
+  /** 向注册邮箱发「重置密码」验证码，返回带 updateUser 的句柄 */
+  function requestPasswordReset(email) {
+    var addr = String(email || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
+      return Promise.reject(new Error('请填写正确的邮箱地址'));
+    }
+    if (!originUsable()) {
+      return Promise.reject(new Error('找回密码只能在线上版使用，请用发布后的网址打开'));
+    }
+    return ensureClient().then(function (c) {
+      return c.auth.resetPasswordForEmail(addr);
+    }).then(function (res) {
+      if (res && res.error) throw res.error;
+      var d = (res && res.data) || res || {};
+      var up = d.updateUser || (d.data && d.data.updateUser);
+      if (typeof up !== 'function') {
+        throw new Error('没能发起密码重置，请稍后再试');
+      }
+      return { email: addr, updateUser: up };
+    });
+  }
+
+  /** 用邮箱验证码 + 新密码完成重置，并自动登录 */
+  function resetPassword(pending, code, newPassword) {
+    if (!pending || typeof pending.updateUser !== 'function') {
+      return Promise.reject(new Error('请先获取邮箱验证码'));
+    }
+    var nonce = String(code || '').replace(/\s/g, '');
+    if (!nonce) return Promise.reject(new Error('请填写收到的验证码'));
+    var pwd = String(newPassword || '');
+    if (pwd.length < 6) return Promise.reject(new Error('密码至少 6 位'));
+
+    var c;
+    return ensureClient().then(function (cl) {
+      c = cl;
+      return pending.updateUser({ nonce: nonce, password: pwd });
+    }).then(function (res) {
+      if (res && res.error) throw normalizeAuthError(res.error, pending);
+      return resolveSession(c, res && (res.data || res));
+    }).then(function (s) {
+      if (!s) throw new Error('密码已更新，但没能自动登录，请用新密码登录');
+      session = s;
+      rememberEmail(pending.email);
+      setState('synced');
+      return { email: pending.email, session: s };
+    });
+  }
+
+  function signOut() {
+    var done = function () {
+      session = null;
+      if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+      try { global.localStorage.removeItem(SESSION_KEY); } catch (e) {}
+      setState('signedout');
+    };
+    if (!client) { done(); return Promise.resolve(); }
+    return client.auth.signOut().then(done, done);
+  }
+
+  /** 清空本账号的云端数据（本地不受影响） */
+  function deleteCloudData() {
+    if (!session) return Promise.reject(new Error('请先登录'));
+    return ensureClient().then(function (c) {
+      return c.database.from(TABLE).delete().eq('owner_id', session.user && session.user.id);
+    }).then(function (res) {
+      if (res.error) throw res.error;
+      return true;
+    });
+  }
+
+  /* ---------- 状态快照 ---------- */
+  function status() {
+    var remembered = '';
+    try {
+      var raw = global.localStorage.getItem(SESSION_KEY);
+      if (raw) remembered = JSON.parse(raw).email || '';
+    } catch (e) {}
+    // 有些版本的 session.user 只有 id，没有 email，这里回退到上次登录记住的邮箱
+    var email = (session && session.user && (session.user.email || session.user.name)) || remembered || '';
+    return {
+      state: state,
+      signedIn: !!session,
+      email: email,
+      rememberedEmail: remembered,
+      lastSyncAt: lastSyncAt,
+      error: lastError,
+      canUseCloud: originUsable() && configured(),
+      needsOnline: !originUsable(),
+      endpoint: CFG.endpoint
+    };
+  }
+
+  function onChange(fn) { listeners.push(fn); }
+
+  global.Cloud = {
+    CFG: CFG,
+    TABLE: TABLE,
+    originUsable: originUsable,
+    configured: configured,
+    restore: restore,
+    sendCode: sendCode,
+    verifyCode: verifyCode,
+    signInWithPassword: signInWithPassword,
+    requestPasswordReset: requestPasswordReset,
+    resetPassword: resetPassword,
+    signOut: signOut,
+    syncNow: syncNow,
+    schedulePush: schedulePush,
+    flushPush: flushPush,
+    deleteCloudData: deleteCloudData,
+    countRemote: countRemote,
+    status: status,
+    onChange: onChange,
+    // 供测试注入
+    __setClient: function (c) { client = c; },
+    __setSession: function (s) { session = s; }
+  };
+})(window);

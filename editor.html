@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#f5f7ff" />
+<title>文本编辑器 · 记忆小站</title>
+<link rel="stylesheet" href="css/app.css?v=1.4.5" />
+<style>
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: #f5f7ff; }
+
+  .ed-bar {
+    flex: none; display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; background: #fff;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .ed-bar .brand { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 14px; margin-right: 4px; }
+  .ed-bar .brand .m { font-size: 17px; }
+  .ed-btn {
+    font-size: 12.5px; font-weight: 700; color: var(--ink-2);
+    background: var(--surface-2); border: 1px solid var(--line);
+    padding: 7px 11px; border-radius: 10px; cursor: pointer;
+    transition: all .15s ease;
+  }
+  .ed-btn:hover { background: #eef2fb; }
+  .ed-btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .ed-btn.primary:hover { filter: brightness(1.05); }
+  .ed-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .ed-spacer { flex: 1; }
+  .ed-file { font-size: 12px; color: var(--ink-3); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .ed-main { flex: 1; display: flex; min-height: 0; padding: 12px 14px 0; }
+  #ta {
+    flex: 1; width: 100%; resize: none;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", "Microsoft YaHei", monospace;
+    font-size: 13.5px; line-height: 1.75;
+    color: var(--ink); background: #fff;
+    border: 1px solid var(--line); border-radius: 14px 14px 0 0;
+    padding: 16px 18px; outline: none;
+    box-shadow: 0 2px 12px rgba(20, 30, 70, .04);
+    tab-size: 4;
+  }
+  #ta:focus { border-color: #b9c8ff; box-shadow: 0 0 0 3px rgba(79, 107, 255, .08); }
+
+  .ed-status {
+    flex: none; display: flex; align-items: center; gap: 14px;
+    padding: 9px 18px; font-size: 11.5px; color: var(--ink-3);
+    background: #fff; border: 1px solid var(--line); border-top: 0;
+    border-radius: 0 0 14px 14px; margin: 0 14px 14px;
+    flex-wrap: wrap;
+  }
+  .ed-status b { color: var(--ink-2); font-weight: 700; }
+  .ed-status .dot { width: 6px; height: 6px; border-radius: 50%; background: #22c39a; display: inline-block; margin-right: 5px; }
+  .ed-status .dot.dirty { background: #ff9500; }
+  .ed-status .warn { color: #8a5300; }
+
+  .ed-tip {
+    flex: none; margin: 0 14px 10px; padding: 10px 13px;
+    background: #fff8ec; border: 1px solid #ffe2b8; border-radius: 12px;
+    font-size: 12px; line-height: 1.7; color: #8a5300;
+  }
+  .ed-tip[hidden] { display: none; }
+  .ed-tip b { color: #6b3f00; }
+
+  @media (max-width: 560px) {
+    .ed-bar { padding: 8px 10px; gap: 6px; }
+    .ed-btn { padding: 6px 9px; font-size: 12px; }
+    .ed-file { display: none; }
+    .ed-main { padding: 8px 10px 0; }
+    #ta { padding: 12px; font-size: 13px; }
+    .ed-status { margin: 0 10px 10px; padding: 8px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="ed-bar">
+  <span class="brand"><span class="m">📝</span>文本编辑器</span>
+  <button class="ed-btn" id="openBtn">打开文件</button>
+  <button class="ed-btn primary" id="saveBtn">下载</button>
+  <button class="ed-btn" id="copyBtn">复制</button>
+  <button class="ed-btn" id="clearBtn">清空</button>
+  <span class="ed-spacer"></span>
+  <span class="ed-file" id="fileName">未打开文件</span>
+</div>
+
+<input type="file" id="fileInput" accept=".txt,.md,.json,.csv,.log,text/plain" hidden />
+
+<div class="ed-tip" id="tip">
+  内容只在<b>你的浏览器里</b>，不会上传到任何服务器。编辑后点「下载」保存到电脑；关闭页面前会自动留一份草稿在本浏览器。
+</div>
+
+<div class="ed-main">
+  <textarea id="ta" spellcheck="false" placeholder="可以点「打开文件」选择 readme.txt，也可以把文件直接拖到这块区域来；想从零写就清空后直接 typing。"></textarea>
+</div>
+
+<div class="ed-status">
+  <span><span class="dot" id="dot"></span><span id="stateText">空</span></span>
+  <span>字符 <b id="charCount">0</b></span>
+  <span>行 <b id="lineCount">1</b></span>
+  <span class="warn" id="draftInfo"></span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var DRAFT_KEY = 'editor.draft.v1';
+  var ta = document.getElementById('ta');
+  var fileInput = document.getElementById('fileInput');
+  var fileNameEl = document.getElementById('fileName');
+  var stateText = document.getElementById('stateText');
+  var dot = document.getElementById('dot');
+  var charCount = document.getElementById('charCount');
+  var lineCount = document.getElementById('lineCount');
+  var draftInfo = document.getElementById('draftInfo');
+  var tip = document.getElementById('tip');
+
+  var curName = '未命名.txt';
+  var saved = '';
+
+  function updateStats() {
+    var v = ta.value;
+    charCount.textContent = v.length;
+    lineCount.textContent = v ? v.split('\n').length : 1;
+    var dirty = v !== saved;
+    dot.className = 'dot' + (dirty ? ' dirty' : '');
+    stateText.textContent = !v ? '空' : (dirty ? '未保存' : '已保存');
+  }
+
+  function saveDraft() {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ name: curName, text: ta.value, at: Date.now() }));
+      draftInfo.textContent = '';
+    } catch (e) {
+      draftInfo.textContent = '草稿保存失败（浏览器存储已满或被禁用）';
+    }
+  }
+
+  function readDraft() {
+    try {
+      var raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return null;
+      var d = JSON.parse(raw);
+      if (!d || typeof d.text !== 'string') return null;
+      return d;
+    } catch (e) { return null; }
+  }
+
+  function loadText(text, name) {
+    ta.value = text;
+    saved = text;
+    if (name) { curName = name; fileNameEl.textContent = name; }
+    updateStats();
+    saveDraft();
+  }
+
+  function handleFile(f) {
+    if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      loadText(String(rd.result), f.name || '未命名.txt');
+      tip.hidden = false;
+    };
+    rd.onerror = function () { alert('文件读取失败，请重试'); };
+    rd.readAsText(f);
+  }
+
+  /* ---------- 打开 ---------- */
+  document.getElementById('openBtn').onclick = function () { fileInput.click(); };
+  fileInput.onchange = function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (f) handleFile(f);
+    fileInput.value = '';
+  };
+
+  /* ---------- 拖拽 ---------- */
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) {
+      if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0) {
+        e.preventDefault();
+        ta.style.borderColor = '#4f6bff';
+      }
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) {
+      ta.style.borderColor = '';
+      if (ev === 'drop') {
+        e.preventDefault();
+        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) handleFile(f);
+      }
+    });
+  });
+
+  /* ---------- 下载 ---------- */
+  document.getElementById('saveBtn').onclick = function () {
+    var text = ta.value;
+    var name = curName || '未命名.txt';
+    var isTxt = /\.txt$/i.test(name) || name.indexOf('.') < 0;
+    // .txt 加 UTF-8 BOM，保证 Windows 记事本不乱码；其它格式原样
+    var payload = isTxt ? '\ufeff' + text : text;
+    var blob = new Blob([payload], { type: 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 200);
+    saved = text;
+    updateStats();
+    saveDraft();
+  };
+
+  /* ---------- 复制 ---------- */
+  document.getElementById('copyBtn').onclick = function () {
+    var btn = this;
+    var done = function () {
+      var old = btn.textContent;
+      btn.textContent = '已复制';
+      setTimeout(function () { btn.textContent = old; }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).then(done, function () {
+        ta.select();
+        document.execCommand('copy');
+        done();
+      });
+    } else {
+      ta.select();
+      document.execCommand('copy');
+      done();
+    }
+  };
+
+  /* ---------- 清空 ---------- */
+  document.getElementById('clearBtn').onclick = function () {
+    if (ta.value && !confirm('清空当前内容？清空后可以用浏览器的撤销（Ctrl+Z）找回。')) return;
+    loadText('', '未命名.txt');
+    fileNameEl.textContent = '未命名.txt';
+    ta.focus();
+  };
+
+  /* ---------- 编辑 ---------- */
+  ta.addEventListener('input', function () {
+    updateStats();
+    clearTimeout(ta._t);
+    ta._t = setTimeout(saveDraft, 800);
+  });
+
+  /* Tab 输入两个空格，避免焦点跳走 */
+  ta.addEventListener('keydown', function (e) {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      var s = ta.selectionStart, en = ta.selectionEnd;
+      ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(en);
+      ta.selectionStart = ta.selectionEnd = s + 2;
+      updateStats();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      document.getElementById('saveBtn').click();
+    }
+  });
+
+  window.addEventListener('beforeunload', function (e) {
+    if (ta.value !== saved) {
+      saveDraft();
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    }
+  });
+
+  /* ---------- 启动：有草稿就问是否恢复 ---------- */
+  (function init() {
+    var d = readDraft();
+    if (d && d.text) {
+      var when = new Date(d.at);
+      var label = when.getFullYear() + '-' +
+        String(when.getMonth() + 1).padStart(2, '0') + '-' +
+        String(when.getDate()).padStart(2, '0') + ' ' +
+        String(when.getHours()).padStart(2, '0') + ':' +
+        String(when.getMinutes()).padStart(2, '0');
+      if (confirm('发现上次留下的草稿（' + d.name + '，' + label + '）。\n\n点「确定」恢复草稿，点「取消」从空白开始（草稿仍会保留到下次打开）。')) {
+        loadText(d.text, d.name || '未命名.txt');
+        draftInfo.textContent = '已恢复 ' + label + ' 的草稿';
+        return;
+      }
+      draftInfo.textContent = '有未恢复的草稿';
+    }
+    updateStats();
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "记忆小站 · 遗忘曲线单词卡",
+  "short_name": "记忆小站",
+  "description": "面向小学生的艾宾浩斯遗忘曲线记忆练习：英语单词、中文识字与听写，多档案本机存储。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f7ff",
+  "theme_color": "#5b7cff",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
