@@ -80,6 +80,10 @@ async function main() {
 
   const rec = w.Store.getRec('en_recog', target.toLowerCase());
   ok(!!rec, '目标卡的记录存在', target);
+  ok(rec.w === 3, '当天 3 次没记住都累计进了 w（含重学环节）', 'w=' + (rec && rec.w));
+  ok(w.SRS.needFocus(rec) === true, '错 2 次以上的卡判定为重点学');
+  const focusIds = w.Store.focusCards().map((x) => x.id);
+  ok(focusIds.indexOf(target.toLowerCase()) >= 0, '它出现在重点学清单里，可直接排版打印', focusIds.join(','));
   ok(rec.s === 1, '当天重复答对不会把阶段刷高（仍是第 1 阶段）', 'stage=' + rec.s);
   ok(rec.due === tomorrow, '复习日固定在明天', 'due=' + rec.due);
   ok(rec.first === today, '首次学习日期是今天', 'first=' + rec.first);
@@ -112,6 +116,30 @@ async function main() {
     '退出后记录保留，明天仍会复习', zRec2 && zRec2.due);
 
   ok(errors.length === 0, '全程无 JS 运行错误', errors.slice(0, 2).join(' | '));
+
+  /* ---------- 重点学清单的计数规则 ---------- */
+  {
+    // 纯函数层：错 2 次 / 模糊 2 次才进清单
+    let r1 = w.SRS.newRecord();
+    r1 = w.SRS.apply(r1, 'hard', '2026-11-01');
+    ok(w.SRS.needFocus(r1) === false, 'H1 只模糊 1 次还不算重点');
+    r1 = w.SRS.apply(r1, 'hard', '2026-11-01');
+    ok(r1.h === 2, 'H2 模糊次数累计到 2', 'h=' + r1.h);
+    ok(w.SRS.needFocus(r1) === true, 'H3 模糊 2 次进重点学清单');
+
+    let r2 = w.SRS.newRecord();
+    r2 = w.SRS.apply(r2, 'forgot', '2026-11-01');
+    ok(w.SRS.needFocus(r2) === false, 'H4 只错 1 次还不算重点');
+    r2 = w.SRS.apply(r2, 'forgot', '2026-11-01');
+    ok(r2.w === 2 && w.SRS.needFocus(r2) === true, 'H5 错 2 次进重点学清单', 'w=' + r2.w);
+    ok(w.SRS.focusScore(r2) > w.SRS.focusScore(r1), 'H6 答错比模糊更该重点练（排序权重）');
+
+    // 存档层：接口本身可用
+    ok(typeof w.Store.focusCount() === 'number', 'H7 focusCount 返回数字', w.Store.focusCount());
+    const zRec3 = w.Store.getRec('zh_recog', zTarget);
+    ok(!zRec3 || zRec3.w < 2 ? w.Store.focusCards().every((x) => x.id !== zTarget) : true,
+      'H8 只错 1 次的卡不会混进重点学清单', JSON.stringify(zRec3 && { w: zRec3.w, h: zRec3.h }));
+  }
 
   const pass = results.filter((r) => r.pass).length;
   const fail = results.length - pass;

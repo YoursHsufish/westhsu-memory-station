@@ -20,8 +20,8 @@ function makeClient(server, uid) {
   const guard = () => {
     if (server.failNetwork) { const e = new Error('Failed to fetch'); e.name = 'TypeError'; throw e; }
   };
-  function table() {
-    const st = { op: null, filters: {}, payload: null };
+  function table(name) {
+    const st = { op: null, filters: {}, payload: null, name: name || 'kid_profiles' };
     const api = {
       select: () => { st.op = 'select'; return api; },
       order: () => api,
@@ -34,6 +34,14 @@ function makeClient(server, uid) {
       await delay();
       guard();
       server.calls.push(st.op);
+      if (st.name !== 'kid_profiles') {
+        // app_accounts / app_events 等统计表：单独存，不计入 kid_profiles 的行数断言
+        if (st.op === 'upsert') {
+          server.other = server.other || [];
+          (st.payload || []).forEach((r) => server.other.push({ table: st.name, ...r }));
+        }
+        return { op: st.op, data: st.op === 'select' ? [] : null, error: null };
+      }
       if (st.op === 'select') {
         return { data: server.rows.filter((r) => r.owner_id === uid).map((r) => ({ ...r })), error: null };
       }

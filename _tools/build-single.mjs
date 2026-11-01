@@ -20,6 +20,7 @@ const SCRIPTS = [
   'js/data-en.js',
   'js/data-zh.js',
   'js/data-py.js',
+  'js/py-dict.js',
   'js/srs.js',
   'js/store.js',
   'js/speech.js',

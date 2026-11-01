@@ -49,6 +49,14 @@ function makeClient(server, uid) {
       await delay();
       guard();
       server.calls.push({ op: st.op, filters: { ...st.filters }, table: name });
+      // 统计表（app_accounts / app_events / app_invites）单独存放，不混进 kid_profiles
+      if (name && name !== 'kid_profiles') {
+        server.other = server.other || [];
+        if (st.op === 'upsert') {
+          (st.payload || []).forEach((r) => server.other.push({ table: name, uid, ...r }));
+        }
+        return { op: st.op, data: st.op === 'select' ? [] : null, error: null };
+      }
       if (st.op === 'select') {
         // 模拟 RLS：只返回属于当前 uid 的行
         return { data: server.rows.filter((r) => r.owner_id === uid).map((r) => ({ ...r })), error: null };

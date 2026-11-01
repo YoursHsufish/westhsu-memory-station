@@ -329,8 +329,41 @@
     save();
   }
 
-  /* ---------- 学习日志 ---------- */
-  function logAnswer(module, correct) {
+  /* ---------- 重点学清单 ----------
+   * 判定：答错 2 次以上，或「有点模糊」2 次以上（见 srs.js needFocus）
+   * 这批卡靠 App 里过一遍不够，要抄到纸上练，所以单独列出来给打印用。
+   */
+  function focusCards(profile) {
+    var p = profile || activeProfile();
+    if (!p) return [];
+    var out = [];
+    MODULES.forEach(function (m) {
+      var recs = (p.data && p.data[m]) || {};
+      Object.keys(recs).forEach(function (id) {
+        var r = recs[id];
+        if (!r || !SRS.needFocus(r)) return;
+        out.push({
+          m: m,
+          id: id,
+          rec: r,
+          w: Number(r.w) || 0,
+          h: Number(r.h) || 0,
+          s: Number(r.s) || 0,
+          score: SRS.focusScore(r),
+          last: r.last || r.first || ''
+        });
+      });
+    });
+    out.sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.last < b.last ? 1 : -1;
+    });
+    return out;
+  }
+
+  function focusCount(profile) { return focusCards(profile).length; }
+
+  /* ---------- 学习日志 ---------- */  function logAnswer(module, correct) {
     var p = activeProfile();
     if (!p) return;
     var d = SRS.todayStr();
@@ -527,6 +560,8 @@
     getRec: getRec,
     allRecs: allRecs,
     setRec: setRec,
+    focusCards: focusCards,
+    focusCount: focusCount,
     logAnswer: logAnswer,
     dayLog: dayLog,
     dayTotal: dayTotal,

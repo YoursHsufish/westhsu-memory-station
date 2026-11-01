@@ -112,20 +112,28 @@ ebbinghaus-kids/            ← 本目录即"线上发布目录"，只放运行�
 │   ├── data-py.js          拼音库（脚本生成）
 │   ├── srs.js              遗忘曲线调度（独立、可单测）
 │   ├── store.js            多档案本地存储（三级降级）
-│   ├── speech.js           朗读（Web Speech API）
+│   ├── py-dict.js          组词用字补充拼音（脚本生成）
+│   ├── audio-manifest.js   已内置的音节清单（脚本生成）
+│   ├── speech.js           朗读（音节 mp3 优先，TTS 兜底）
 │   ├── cloud.js            云端同步层（可选，未登录不加载 SDK）
 │   └── app.js              路由 / 页面 / 六类练习引擎
 └── _tools/
     ├── build-single.mjs    生成单文件版
     ├── build-zh-data.py    生成 data-zh.js
     ├── build-py-data.py    生成 data-py.js
+    ├── build-audio.py      下载/转码拼音音节音频 + 生成 py-dict.js
     ├── fetch-data.sh       下载重建词库所需原始数据
     ├── test-app.mjs        功能回归（67 项）
     ├── test-scenario.mjs   验收测试：建档/年级/六功能/切换（3 环境 × 53 项）
-    ├── test-relearn.mjs    当日重学循环验证（14 项）
+    ├── test-relearn.mjs    当日重学循环验证（25 项）
+    ├── test-print.mjs      复习单 / 重点练清单（29 项）
+    ├── test-speech.mjs     发音：拼音转音节、词语连读、TTS 回退（31 项）
     ├── test-storage.mjs    存档保护验证（42 项）
     ├── test-migrate.mjs    换浏览器搬存档验证（27 项）
-    ├── test-cloud.mjs      云端同步逻辑验证（47 项）
+    ├── test-cloud.mjs      云端同步逻辑验证（61 项）
+    ├── test-sync.mjs       同步页 / 编辑器（37 项）
+    ├── test-strings.mjs    文案表回退（17 项）
+    ├── test-admin.mjs      管理后台（26 项）
     └── harness.mjs         测试基座（可切入口、可模拟禁写存储、可给云端打桩）
 ```
 
@@ -156,18 +164,24 @@ ebbinghaus-kids/            ← 本目录即"线上发布目录"，只放运行�
 ```bash
 NODE_PATH="<node_modules 路径>" node _tools/test-app.mjs        # 67 项功能回归
 NODE_PATH="<node_modules 路径>" node _tools/test-scenario.mjs   # 174 项验收（3 环境）
-NODE_PATH="<node_modules 路径>" node _tools/test-relearn.mjs    # 14 项当日重学循环验证
+NODE_PATH="<node_modules 路径>" node _tools/test-relearn.mjs    # 25 项当日重学 + 重点练判定
 NODE_PATH="<node_modules 路径>" node _tools/test-storage.mjs    # 42 项存档保护验证
 NODE_PATH="<node_modules 路径>" node _tools/test-migrate.mjs    # 27 项换浏览器搬存档验证
-NODE_PATH="<node_modules 路径>" node _tools/test-cloud.mjs      # 47 项云端同步验证
+NODE_PATH="<node_modules 路径>" node _tools/test-print.mjs      # 29 项复习单 / 重点练清单
+NODE_PATH="<node_modules 路径>" node _tools/test-speech.mjs     # 31 项发音（音节拼接 / TTS 回退）
+NODE_PATH="<node_modules 路径>" node _tools/test-cloud.mjs      # 61 项云端同步验证
+NODE_PATH="<node_modules 路径>" node _tools/test-sync.mjs       # 37 项同步页 / 编辑器
+NODE_PATH="<node_modules 路径>" node _tools/test-strings.mjs    # 17 项文案表回退
+NODE_PATH="<node_modules 路径>" node _tools/test-admin.mjs      # 26 项管理后台
 ```
-最近一次：**67 + 174 + 14 + 42 + 27 + 47 = 371 项全部通过，0 失败，0 个 JS 运行期错误**。验收覆盖：建档「测试」（一年级）与「测试1」（三年级）、一年级范围不越级、六项练习逐一作答落库、拼音声调对/错的判定、切换小朋友数据隔离、改六年级后范围扩大且记录保留、备份导出、**同一张卡连错 3 次仍在当天重现并最终答对才结束**、退出即放弃。
+最近一次（v1.7.0）：**67 + 174 + 25 + 42 + 27 + 29 + 31 + 61 + 37 + 17 + 26 = 536 项全部通过，0 失败，0 个 JS 运行期错误**。验收覆盖：建档「测试」（一年级）与「测试1」（三年级）、一年级范围不越级、六项练习逐一作答落库、拼音声调对/错的判定、切换小朋友数据隔离、改六年级后范围扩大且记录保留、备份导出、**同一张卡连错 3 次仍在当天重现并最终答对才结束**、退出即放弃。
 
 **重建词库**
 ```bash
 bash _tools/fetch-data.sh                  # 下载原始数据（约 40MB）
 python _tools/build-zh-data.py 200 6       # 中文 1200 字
 python _tools/build-py-data.py             # 拼音 400 条
+python _tools/build-audio.py --write       # 音节音频（2.5MB）+ py-dict.js
 node _tools/build-single.mjs               # 重新打包单文件版
 ```
 

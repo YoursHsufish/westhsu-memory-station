@@ -33,7 +33,8 @@ function boot() {
   const w = dom.window;
   w.confirm = () => true;
   w.alert = () => {};
-  const files = ['js/meta.js', 'js/strings.js', 'js/data-en.js', 'js/data-zh.js', 'js/data-py.js', 'js/srs.js', 'js/store.js', 'js/speech.js', 'js/cloud.js', 'js/app.js'];
+  w.__AUDIO_OFF__ = true;   // jsdom 不支持音频播放
+  const files = ['js/meta.js', 'js/strings.js', 'js/data-en.js', 'js/data-zh.js', 'js/data-py.js', 'js/py-dict.js', 'js/audio-manifest.js', 'js/srs.js', 'js/store.js', 'js/speech.js', 'js/cloud.js', 'js/app.js'];
   for (const f of files) {
     try {
       w.eval(read(f));

@@ -300,7 +300,17 @@ h1, h2, h3, h4, p { margin: 0; }
 }
 .speak-btn:active { transform: scale(.94); }
 .speak-btn.playing { animation: pulse 1s infinite; }
+.speak-btn.off { opacity: .42; filter: grayscale(1); }
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(79,107,255,.25); } 50% { box-shadow: 0 0 0 12px rgba(79,107,255,0); } }
+
+/* 组词小标签：点哪个读哪个 */
+.word-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.word-chip {
+  font-family: inherit; font-size: 12.5px; font-weight: 700; line-height: 1.2;
+  padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  background: #fff; border: 1px solid var(--line); color: var(--ink-2);
+}
+.word-chip:active { transform: scale(.96); background: var(--primary-weak); border-color: #cdd9ff; color: #3f57d6; }
 
 .answer-box {
   margin-top: 18px; padding: 16px; border-radius: 18px;

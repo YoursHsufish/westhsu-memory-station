@@ -375,6 +375,8 @@
         }));
       } catch (e) { /* 存储被禁用时忽略 */ }
       setState('synced');
+      recordAccount();
+      recordEvent('login', {});
       return { session: s, isExistingUser: pending.isExistingUser, email: pending.email };
     });
   }
@@ -538,6 +540,82 @@
     };
   }
 
+  /* ---------- 使用统计（供管理端后台读取） ----------
+   * 只记录"谁登录过、谁练过多少次"，不含任何学习内容。
+   * 所有写入失败都静默忽略，绝不影响正常学习。
+   */
+  var ACCOUNTS = 'app_accounts';
+  var EVENTS = 'app_events';
+  var INVITES = 'app_invites';
+
+  function currentEmail() {
+    return (session && session.user && session.user.email) || '';
+  }
+
+  function currentUid() {
+    return (session && session.user && session.user.id) || '';
+  }
+
+  /** 登录后登记/刷新账号行（首次插入，之后只更新 last_seen） */
+  function recordAccount() {
+    if (!configured() || !currentUid()) return Promise.resolve(null);
+    return ensureClient().then(function (c) {
+      return c.database.from(ACCOUNTS).upsert([{
+        uid: String(currentUid()),
+        email: currentEmail(),
+        last_seen: new Date().toISOString()
+      }], { onConflict: 'uid' });
+    }).catch(function () { return null; });
+  }
+
+  /** 记录一条事件：login / practice */
+  function recordEvent(kind, detail) {
+    if (!configured() || !currentUid()) return Promise.resolve(null);
+    return ensureClient().then(function (c) {
+      return c.database.from(EVENTS).upsert([{
+        uid: String(currentUid()),
+        email: currentEmail(),
+        kind: String(kind || 'event'),
+        detail: detail || {}
+      }]);
+    }).catch(function () { return null; });
+  }
+
+  /** 读取发给当前邮箱、且尚未被领取的邀请（行级安全已限定只看得到自己的） */
+  function fetchInvite() {
+    if (!configured() || !session) return Promise.resolve(null);
+    return ensureClient().then(function (c) {
+      return c.database.from(INVITES).select('id, email, kid_name, grade, claimed_at');
+    }).then(function (res) {
+      var rows = (res && res.data) || [];
+      for (var i = 0; i < rows.length; i++) {
+        if (!rows[i].claimed_at) return rows[i];
+      }
+      return null;
+    }).catch(function () { return null; });
+  }
+
+  /* ---------- 通用查询/写入（仅管理端使用） ---------- */
+  function dbQuery(table, cols) {
+    return ensureClient().then(function (c) {
+      return c.database.from(table).select(cols || '*');
+    }).then(function (res) {
+      if (res && res.error) throw res.error;
+      return (res && res.data) || [];
+    });
+  }
+
+  function dbInsert(table, rows, onConflict) {
+    return ensureClient().then(function (c) {
+      var opts = onConflict ? { onConflict: onConflict } : undefined;
+      var p = opts ? c.database.from(table).upsert(rows, opts) : c.database.from(table).upsert(rows);
+      return Promise.resolve(p);
+    }).then(function (res) {
+      if (res && res.error) throw res.error;
+      return res && res.data;
+    });
+  }
+
   function onChange(fn) { listeners.push(fn); }
 
   global.Cloud = {
@@ -557,6 +635,13 @@
     flushPush: flushPush,
     deleteCloudData: deleteCloudData,
     countRemote: countRemote,
+    recordAccount: recordAccount,
+    recordEvent: recordEvent,
+    fetchInvite: fetchInvite,
+    currentEmail: currentEmail,
+    currentUid: currentUid,
+    dbQuery: dbQuery,
+    dbInsert: dbInsert,
     status: status,
     onChange: onChange,
     // 供测试注入

@@ -672,7 +672,57 @@
       }).join('') + '</div>';
     }
 
+    // 重点学清单（错 2 次以上 / 模糊 2 次以上）
+    var focus = Store.focusCards();
+    html += '<div class="section-title"><h2>要重点练</h2>' +
+      (focus.length ? '<button class="link" id="goFocusPrint">打印这份清单</button>' : '') + '</div>';
+    if (!focus.length) {
+      html += '<div class="card"><div style="font-size:13px;color:var(--ink-3);line-height:1.8">' +
+        '还没有需要重点练的字词。<br>同一个字词<b>答错 2 次</b>、或者<b>「有点模糊」2 次</b>，就会自动收进这份清单，' +
+        '可以一键排版打印到纸上练。</div></div>';
+    } else {
+      html += '<div class="card">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+        '<div style="width:44px;height:44px;border-radius:14px;background:#fff1f3;display:grid;place-items:center;font-size:21px">📌</div>' +
+        '<div style="flex:1"><div style="font-weight:800;font-size:15px">' + focus.length + ' 张要单独练</div>' +
+        '<div style="font-size:12px;color:var(--ink-3);margin-top:2px">答错 2 次以上，或「有点模糊」2 次以上</div></div>' +
+        '</div>' +
+        '<div class="list">' + focus.slice(0, 6).map(function (it) {
+          var c = cardOf(it.m, it.id);
+          if (!c) return '';
+          return '<div class="row"><div class="row-main">' +
+            '<div class="row-title">' + esc(it.m.indexOf('en') === 0 ? c.w : c.c) + '</div>' +
+            '<div class="row-sub">' + esc(it.m.indexOf('en') === 0 ? c.zh : (c.pinyin || '')) + ' · ' + esc(moduleMeta(it.m).title) + '</div>' +
+            '</div><span class="chev-r">' + focusTag(it) + '</span></div>';
+        }).join('') + '</div>' +
+        (focus.length > 6 ? '<div style="font-size:12px;color:var(--ink-3);margin-top:8px;text-align:center">还有 ' + (focus.length - 6) + ' 张，打印单里会全部列出</div>' : '') +
+        '<button class="btn btn-primary btn-block" id="goFocusPrint2" style="margin-top:12px">整理成一页，打印出来练</button>' +
+        '</div>';
+    }
+
     view.innerHTML = html;
+
+    var goFocus = function () { openPrintSheet('focus'); };
+    var g1 = $('#goFocusPrint'), g2 = $('#goFocusPrint2');
+    if (g1) g1.onclick = goFocus;
+    if (g2) g2.onclick = goFocus;
+  }
+
+  /** 清单里的次数标签：错 x 次 · 模糊 y 次 */
+  function focusTag(it) {
+    var a = [];
+    if (it.w) a.push('错 ' + it.w + ' 次');
+    if (it.h) a.push('模糊 ' + it.h + ' 次');
+    return a.join(' · ') || '—';
+  }
+
+  /** 打开打印复习单（线上版才有这一页） */
+  function openPrintSheet(rule) {
+    if (window.__SINGLE_FILE__) {
+      toast('单文件版没有打印页，请用线上版：' + (META.siteUrl || '记忆小站'));
+      return;
+    }
+    window.open('print.html?rule=' + encodeURIComponent(rule || 'weak'), '_blank');
   }
 
   function weekSum() {
@@ -774,6 +824,26 @@
     }).join('') + '</div>';
 
     var s = p.settings;
+    // 打印复习单入口
+    var fc = Store.focusCount();
+    html += '<div class="section-title"><h2>打印复习单</h2></div>';
+    html += '<div class="card" style="display:flex;align-items:center;gap:12px">' +
+      '<div style="width:42px;height:42px;border-radius:13px;background:#eef2ff;display:grid;place-items:center;font-size:20px">🖨</div>' +
+      '<div style="flex:1;min-width:0">' +
+      '<div style="font-weight:800;font-size:14px">把不熟的字词排成一页带打印</div>' +
+      '<div style="font-size:12px;color:var(--ink-3);margin-top:3px">按日期筛出答错过的字词，含拼音、组词、释义，也可只印字留白自测</div>' +
+      '</div>' +
+      '<button class="btn btn-ghost" id="btnPrintSheet" style="flex:none;padding:8px 14px;font-size:13px">去生成</button>' +
+      '</div>';
+    html += '<div class="card" style="display:flex;align-items:center;gap:12px;margin-top:10px">' +
+      '<div style="width:42px;height:42px;border-radius:13px;background:#fff1f3;display:grid;place-items:center;font-size:20px">📌</div>' +
+      '<div style="flex:1;min-width:0">' +
+      '<div style="font-weight:800;font-size:14px">重点练清单' + (fc ? ' · ' + fc + ' 张' : '') + '</div>' +
+      '<div style="font-size:12px;color:var(--ink-3);margin-top:3px">答错 2 次以上、或「有点模糊」2 次以上的字词，自动收在这里</div>' +
+      '</div>' +
+      '<button class="btn btn-ghost" id="btnFocusSheet" style="flex:none;padding:8px 14px;font-size:13px"' + (fc ? '' : ' disabled') + '>去打印</button>' +
+      '</div>';
+
     html += '<div class="section-title"><h2>学习内容</h2><button class="link" id="editScope">修改 ›</button></div>';
     html += '<div class="card">' +
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
@@ -858,6 +928,24 @@
 
     bindCloudCard();
     $('#addProfile').onclick = function () { openProfileSheet(null); };
+    var bps = $('#btnPrintSheet');
+    if (bps) {
+      if (window.__SINGLE_FILE__) {
+        bps.textContent = '需线上版';
+        bps.disabled = true;
+      } else {
+        bps.onclick = function () { openPrintSheet('weak'); };
+      }
+    }
+    var bfs = $('#btnFocusSheet');
+    if (bfs) {
+      if (window.__SINGLE_FILE__) {
+        bfs.textContent = '需线上版';
+        bfs.disabled = true;
+      } else if (!bfs.disabled) {
+        bfs.onclick = function () { openPrintSheet('focus'); };
+      }
+    }
     var ac = $('#aboutCard');
     if (ac) ac.onclick = openAbout;
     var es = $('#editScope');
@@ -1370,12 +1458,21 @@
   function finishSignIn(res, nick) {
     closeSheet();
     return Cloud.syncNow({ force: true }).then(function () {
-      if (!Store.listProfiles().length && nick) {
-        var np = Store.createProfile(nick, '🐣');
+      if (Store.listProfiles().length) return null;
+      // 没有本地档案时：优先用管理员在后台「预建账号」里填的昵称与年级
+      var useInvite = function (inv) {
+        var name = (inv && inv.kid_name) || nick;
+        if (!name) return null;
+        var np = Store.createProfile(name, '🐣');
         Store.setActive(np.id);
-        applyGradeScope(np);
+        if (inv && inv.grade) Store.updateSettings(np.id, { grade: Number(inv.grade) || 1 });
+        applyGradeScope(Store.getProfile(np.id));
         return Cloud.flushPush();
-      }
+      };
+      if (!Cloud.fetchInvite) return useInvite(null);
+      return Cloud.fetchInvite().then(function (inv) {
+        return useInvite(inv);
+      }, function () { return useInvite(null); });
     }).then(function () {
       toast(res.isExistingUser ? '欢迎回来，进度已同步' : '注册成功，开始学习吧');
       if (!location.hash || location.hash === '#/') location.hash = '#/home';
@@ -1711,6 +1808,33 @@
       cur: null
     };
     openSession();
+    primeNextAudio();   // 第一张也读一遍（此处仍在点击的同步栈里）
+  }
+
+  /**
+   * 预读「下一张卡」的发音。
+   *
+   * 为什么不用 setTimeout：iOS / Safari 只允许在用户点击的同步执行栈里发声，
+   * 放到定时器里一定静默失败——这正是之前手机上听不到声音的原因。
+   * 所以答案按钮的点击处理里就把下一张读完，780 ms 后卡片出现时声音已经在了。
+   */
+  function primeNextAudio() {
+    if (!S || !S.queue) return;
+    var next = S.queue[S.i];
+    if (!next) return;
+    var card = cardOf(next.m, next.id);
+    if (!card) return;
+    var st = Store.activeProfile().settings || {};
+    var rate = st.ttsRate || 1;
+    if (next.m === 'zh_dict') {
+      Speech.speakZhCard(card, { rate: rate });          // 听写：先读字，再读一个组词
+    } else if (next.m === 'zh_recog' && st.ttsAuto) {
+      Speech.speakZhCard(card, { rate: rate });
+    } else if (next.m === 'py_recog' && st.ttsAuto) {
+      Speech.speakPyCard(card, { rate: rate });
+    } else if (next.m === 'en_recog' && st.ttsAuto) {
+      Speech.speakEn(card.w, rate);
+    }
   }
 
   function openEmptySheet() {
@@ -1819,7 +1943,6 @@
     var card = cardOf(m, S.cur.id);
     if (!card) { S.i += 1; nextCard(); return; }
     var isEn = m === 'en_recog';
-    var autoSpeak = Store.activeProfile().settings.ttsAuto;
 
     body(
       '<div class="quiz-card">' +
@@ -1828,7 +1951,7 @@
         ? '<div class="quiz-word">' + esc(card.w) + '</div>'
         : '<div class="quiz-char">' + esc(card.c) + '</div>') +
       '<div class="quiz-hint">' + (isEn ? '读一读，你认识它吗？' : '看一看，这个字你认识吗？') + '</div>' +
-      '<button class="speak-btn" id="btnSpeak" title="朗读">🔊</button>' +
+      speakBtnHtml('btnSpeak', isEn ? '朗读' : '读字 + 组词') +
       '</div>'
     );
     foot('<div class="btn-pair">' +
@@ -1838,18 +1961,39 @@
 
     $('#btnSpeak').onclick = function () {
       if (isEn) Speech.speakEn(card.w, Store.activeProfile().settings.ttsRate);
-      else Speech.speakZh(card.c, Store.activeProfile().settings.ttsRate);
+      else Speech.speakZhCard(card, { rate: Store.activeProfile().settings.ttsRate });
     };
     $('#btnYes').onclick = function () { S.picked = 'yes'; renderRecogAnswer(); };
     $('#btnNo').onclick = function () { S.picked = 'no'; renderRecogAnswer(); };
+  }
 
-    if (autoSpeak) {
-      setTimeout(function () {
-        if (!S || S.phase !== 'ask') return;
-        if (isEn) Speech.speakEn(card.w, Store.activeProfile().settings.ttsRate);
-        else Speech.speakZh(card.c, Store.activeProfile().settings.ttsRate);
-      }, 220);
-    }
+  /** 喇叭按钮（浏览器完全不支持发声时置灰并提示） */
+  function speakBtnHtml(id, title, extraStyle) {
+    var ok = window.Speech && Speech.audioReady();
+    return '<button class="speak-btn' + (ok ? '' : ' off') + '" id="' + id + '" title="' + esc(title || '朗读') + '"' +
+      (extraStyle ? ' style="' + extraStyle + '"' : '') +
+      (ok ? '' : ' aria-disabled="true"') + '>🔊</button>';
+  }
+
+  /** 组词拆成可点的小标签：点哪个读哪个（都是音节音频连读） */
+  function wordChipsHtml(words, style) {
+    var list = String(words || '').split(/[、,，/；;|]/).map(function (w) { return String(w).trim(); })
+      .filter(function (w) { return w; });
+    if (!list.length) return '';
+    return '<div class="word-chips" style="' + (style || '') + '">' + list.map(function (w) {
+      return '<button class="word-chip" data-word="' + esc(w) + '">🔊 ' + esc(w) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  /** 给组词标签挂上朗读 */
+  function bindWordChips(root, rate) {
+    $$('.word-chip', root || document).forEach(function (b) {
+      b.onclick = function () {
+        var w = b.getAttribute('data-word');
+        if (!w) return;
+        Speech.speakZhWord(w, { rate: rate || Store.activeProfile().settings.ttsRate });
+      };
+    });
   }
 
   function renderRecogAnswer() {
@@ -1875,8 +2019,8 @@
         (card.strokes ? '<span class="chip">' + esc(card.strokes) + ' 画</span>' : '') +
         '</div>' +
         (card.mean ? '<div style="font-size:14px;color:var(--ink-2);margin-top:12px;line-height:1.7">' + esc(card.mean) + '</div>' : '') +
-        (card.words ? '<div style="font-size:13px;color:var(--ink-3);margin-top:6px">组词：' + esc(card.words) + '</div>' : '') +
-        '<div class="answer-say"><button class="btn btn-ghost" id="btnSpeak2" style="padding:8px 14px;font-size:13px">🔊 听读音</button></div>' +
+        (card.words ? wordChipsHtml(card.words, 'margin-top:8px') : '') +
+        '<div class="answer-say"><button class="btn btn-ghost" id="btnSpeak2" style="padding:8px 14px;font-size:13px">🔊 读字 + 组词</button></div>' +
         '</div>';
 
     body('<div class="quiz-card">' +
@@ -1905,8 +2049,9 @@
     var s2 = $('#btnSpeak2');
     if (s2) s2.onclick = function () {
       if (isEn) Speech.speakEn(card.w, Store.activeProfile().settings.ttsRate);
-      else Speech.speakZh(card.c, Store.activeProfile().settings.ttsRate);
+      else Speech.speakZhCard(card, { rate: Store.activeProfile().settings.ttsRate });
     };
+    if (!isEn) bindWordChips($('#sBody'));
   }
 
   /* ---------- 模式二：英语拼写 ---------- */
@@ -2003,7 +2148,7 @@
       '<span class="quiz-tag">' + esc(card.type) + ' · ' + esc(card.unit) + '</span>' +
       '<div class="quiz-word py-word">' + esc(card.pinyin) + '</div>' +
       '<div class="quiz-hint">读一读，这个音你认得吗？</div>' +
-      '<button class="speak-btn" id="btnSpeak" title="朗读">🔊</button>' +
+      speakBtnHtml('btnSpeak', '读例字 + 例词') +
       '</div>'
     );
     foot('<div class="btn-pair">' +
@@ -2011,7 +2156,7 @@
       '<button class="btn btn-mint btn-lg" id="btnYes">认识</button>' +
       '</div>');
 
-    $('#btnSpeak').onclick = function () { Speech.speakZh(card.c, Store.activeProfile().settings.ttsRate); };
+    $('#btnSpeak').onclick = function () { Speech.speakPyCard(card, { rate: Store.activeProfile().settings.ttsRate }); };
     $('#btnYes').onclick = function () { S.picked = 'yes'; renderPyRecogAnswer(); };
     $('#btnNo').onclick = function () { S.picked = 'no'; renderPyRecogAnswer(); };
   }
@@ -2028,10 +2173,10 @@
       '<div class="quiz-char" style="font-size:clamp(54px,18vw,84px);line-height:1">' + esc(card.c) + '</div>' +
       '<div style="text-align:left">' +
       '<div class="chip violet">' + esc(card.type) + '</div>' +
-      (card.word ? '<div style="font-size:15px;color:var(--ink-2);margin-top:8px">例词：' + esc(card.word) + '</div>' : '') +
       (card.base && card.tone ? '<div style="font-size:12.5px;color:var(--ink-3);margin-top:4px">' + esc(card.base) + ' · 第 ' + card.tone + ' 声</div>' : '') +
       '</div></div>' +
-      '<div class="answer-say"><button class="btn btn-ghost" id="btnSpeak2" style="padding:8px 14px;font-size:13px">🔊 听读音</button></div>' +
+      (card.word ? wordChipsHtml(card.word, 'margin-top:12px;justify-content:center') : '') +
+      '<div class="answer-say"><button class="btn btn-ghost" id="btnSpeak2" style="padding:8px 14px;font-size:13px">🔊 读例字 + 例词</button></div>' +
       '</div>' +
       '<div class="ask-confirm">' + (S.picked === 'yes'
         ? '再想一下：刚才你是真的读出来了，还是有点模糊？'
@@ -2050,7 +2195,8 @@
       $('#btnNext').onclick = function () { answer('forgot'); };
     }
     var s2 = $('#btnSpeak2');
-    if (s2) s2.onclick = function () { Speech.speakZh(card.c, Store.activeProfile().settings.ttsRate); };
+    if (s2) s2.onclick = function () { Speech.speakPyCard(card, { rate: Store.activeProfile().settings.ttsRate }); };
+    bindWordChips($('#sBody'));
   }
 
   /* ---------- 拼音拼写（与英语拼写同一套交互 + 声调选择） ---------- */
@@ -2131,13 +2277,14 @@
       '<div class="quiz-word py-word" style="font-size:clamp(28px,9vw,40px);margin-top:8px">' + esc(card.pinyin) + '</div>' +
       '<div class="quiz-hint">你的答案：' + esc(raw.trim()) + (pickedTone ? ' · 第' + pickedTone + '声' : ' · 未选声调') + '</div>' +
       '<div class="verdict ' + cls + '">' + verdict + '</div>' +
-      (card.word ? '<div style="font-size:13px;color:var(--ink-3);margin-top:8px">例词：' + esc(card.word) + '</div>' : '') +
-      '<button class="speak-btn" id="btnSpeak2">🔊</button>' +
+      (card.word ? wordChipsHtml(card.word, 'margin-top:8px;justify-content:center') : '') +
+      speakBtnHtml('btnSpeak2') +
       '</div>');
     foot('<button class="btn btn-primary btn-lg btn-block" id="btnNext">继续</button>');
-    $('#btnSpeak2').onclick = function () { Speech.speakZh(card.c, 0.9); };
+    $('#btnSpeak2').onclick = function () { Speech.speakPyCard(card, { rate: 0.9 }); };
     $('#btnNext').onclick = function () { answer(outcome); };
-    Speech.speakZh(card.c, 0.9);
+    bindWordChips($('#sBody'), 0.9);
+    Speech.speakPyCard(card, { rate: 0.9 });
   }
 
   /* ---------- 中文听写 ---------- */
@@ -2149,7 +2296,7 @@
     body('<div class="quiz-card">' +
       '<span class="quiz-tag">' + esc(card.unit) + ' · 听写</span>' +
       '<div style="font-size:64px;line-height:1.1;margin:8px 0 2px">🎧</div>' +
-      '<div class="quiz-hint" style="font-size:14px">听发音，在纸上写下来，再点「看答案」对照</div>' +
+      '<div class="quiz-hint" style="font-size:14px">听发音（先读字，再读一个组词），在纸上写下来，再点「看答案」对照</div>' +
       '<button class="speak-btn" id="btnPlay" style="margin-top:18px">▶</button>' +
       '<div class="tts-row"><label>语速</label>' +
       '<input type="range" id="rateIn" min="0.4" max="1.4" step="0.1" value="' + rate + '" />' +
@@ -2158,20 +2305,20 @@
       '</div>');
     foot('<button class="btn btn-primary btn-lg btn-block" id="btnReveal">看答案</button>');
 
-    function play() {
-      Speech.speakZh(card.c, Number(rate));
+    // 播放发生在点击栈里（iOS 才允许出声），不再用 setTimeout
+    window.__playDict = function () {
+      Speech.speakZhCard(card, { rate: Number(rate) });
       var b = $('#btnPlay');
       if (b) { b.classList.add('playing'); setTimeout(function () { if (b) b.classList.remove('playing'); }, 1200); }
-    }
-    $('#btnPlay').onclick = play;
-    $('#btnAgain').onclick = play;
+    };
+    $('#btnPlay').onclick = function () { window.__playDict(); };
+    $('#btnAgain').onclick = function () { window.__playDict(); };
     $('#rateIn').oninput = function () {
       rate = Number(this.value);
       $('#rateVal').textContent = rate.toFixed(1) + 'x';
       Store.updateSettings(Store.activeProfile().id, { ttsRate: rate });
     };
     $('#btnReveal').onclick = function () { renderDictAnswer(card); };
-    setTimeout(play, 320);
   }
 
   function renderDictAnswer(card) {
@@ -2186,7 +2333,7 @@
       (card.strokes ? '<span class="chip">' + esc(card.strokes) + ' 画</span>' : '') +
       '</div>' +
       (card.mean ? '<div style="font-size:13.5px;color:var(--ink-2);margin-top:10px;line-height:1.7">' + esc(card.mean) + '</div>' : '') +
-      (card.words ? '<div style="font-size:13px;color:var(--ink-3);margin-top:4px">组词：' + esc(card.words) + '</div>' : '') +
+      (card.words ? wordChipsHtml(card.words, 'margin-top:8px;justify-content:center') : '') +
       '<div class="answer-say"><button class="btn btn-ghost" id="btnSpeak2" style="padding:8px 14px;font-size:13px">🔊 再听一遍</button></div>' +
       '</div>' +
       '<div class="ask-confirm">你写对了吗？</div>' +
@@ -2195,9 +2342,10 @@
       '<button class="btn btn-amber btn-lg" id="btnWrong">写错了 / 写不出</button>' +
       '<button class="btn btn-mint btn-lg" id="btnRight">写对了</button>' +
       '</div>');
-    $('#btnSpeak2').onclick = function () { Speech.speakZh(card.c, 0.85); };
+    $('#btnSpeak2').onclick = function () { Speech.speakZhCard(card, { rate: 0.85 }); };
     $('#btnRight').onclick = function () { answer('easy'); };
     $('#btnWrong').onclick = function () { answer('forgot'); };
+    bindWordChips($('#sBody'), 0.85);
   }
 
   /* ---------- 统一提交 ----------
@@ -2278,6 +2426,11 @@
     Store.logAnswer(cur.m, false);
     S.relearnSet[cur.m + ':' + cur.id] = true;   // 这张确实重学了
     cur.tries = (cur.tries || 0) + 1;
+    // 当天重学时又答错 / 又模糊，也累计进去：这两类卡就是要单独打印出来练的
+    if (outcome === 'hard') rec.h = (rec.h || 0) + 1;
+    else rec.w = (rec.w || 0) + 1;
+    rec.last = today;
+    Store.setRec(cur.m, cur.id, rec);
     S.i += 1;
 
     if (cur.tries <= (cur.maxTries || 5)) {
@@ -2294,6 +2447,8 @@
   function flashVerdict(outcome, rec, item) {
     var relearn = !!(item && item.relearn);
     var msg, cls;
+
+    primeNextAudio();   // 顺手把下一张读出来（必须在点击栈里，见函数注释）
 
     if (outcome === 'easy') {
       cls = 'ok';
@@ -2326,6 +2481,16 @@
   function finishSession() {
     S.finished = true;
     S.done = S.total;
+    // 使用频次统计：每组练习记一条，只含张数与答对率，不含具体卡片
+    if (Cloud && Cloud.recordEvent) {
+      try {
+        Cloud.recordEvent('practice', {
+          cards: S.total,
+          correct: S.firstCorrect,
+          mins: Math.max(1, Math.round((Date.now() - S.startAt) / 60000))
+        });
+      } catch (e) { /* 统计失败不影响学习 */ }
+    }
     var acc = pct(S.firstCorrect, S.total);
     var mins = Math.max(1, Math.round((Date.now() - S.startAt) / 60000));
     var relearned = Object.keys(S.relearnSet).length;

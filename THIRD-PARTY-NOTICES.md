@@ -48,13 +48,30 @@
 - 许可：MIT License
 - 版权：**Copyright (c) 2013 Sun Junyi**
 
+## 6. 普通话拼音音节音频（v1.7.0 起）
+
+- 项目：`davinfifield/mp3-chinese-pinyin-sound`
+- 地址：https://github.com/davinfifield/mp3-chinese-pinyin-sound
+- 用途：汉字与词语的离线发音（`assets/audio/py/*.mp3`）
+- 许可：**The Unlicense（公有领域）**——可自由复制、修改、分发、商用
+- 说明：本项目只取其中实际用到的 766 个音节，构建时转码为 16 kHz 单声道 32 kbps 并裁掉首尾静音（原始体积 14.6 MB → 2.5 MB）。
+
+## 7. pypinyin 汉语拼音库（仅构建阶段）
+
+- 项目：`mozillazg/python-pinyin`
+- 地址：https://github.com/mozillazg/python-pinyin
+- 用途：为组词中不在 1200 字表内的汉字补拼音（生成 `js/py-dict.js`），并在构建阶段校正多音字词读音
+- 许可：MIT License
+- 版权：**Copyright (c) 2016 mozillazg**
+- 说明：只在构建脚本 `_tools/build-audio.py` 里使用，**不随软件分发**。
+
 ---
 
 ## 其它说明
 
-- **朗读功能**使用浏览器内置的 Web Speech API，不含任何第三方语音代码或语音资源。
+- **朗读功能**有两条通道：优先播放随软件分发的**拼音音节 mp3**（见第 6 条），没有对应音频时回退到浏览器内置的 Web Speech API。
 - **英语词库**由软件作者按《义务教育英语课程标准》小学阶段的词汇范围自行整理，未直接复制任何教材原文。
-- **拼音音节**由本软件从上述汉字数据聚合生成，未使用第三方拼音库。
+- **拼音音节**由本软件从上述汉字数据聚合生成，未使用第三方拼音库（pypinyin 只在构建阶段补字表）。
 
 ---
 

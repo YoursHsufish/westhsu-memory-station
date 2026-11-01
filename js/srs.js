@@ -42,7 +42,30 @@
   }
 
   function newRecord() {
-    return { s: 0, due: null, c: 0, w: 0, first: null, last: null, streak: 0 };
+    return { s: 0, due: null, c: 0, w: 0, h: 0, first: null, last: null, streak: 0 };
+  }
+
+  /**
+   * 「要重点学」的判定：这张卡反复没记住
+   *
+   *   w  答错（不认识 / 拼错 / 听写写不出）的累计次数
+   *   h  「其实有点模糊」的累计次数
+   *
+   * 错 2 次以上、或者模糊 2 次以上，就说明它光靠 App 里的过一遍不够，
+   * 需要单独抄出来在纸上再练——打印复习单默认就取这批卡。
+   */
+  var FOCUS_W = 2;
+  var FOCUS_H = 2;
+
+  function needFocus(rec) {
+    if (!rec) return false;
+    return (Number(rec.w) || 0) >= FOCUS_W || (Number(rec.h) || 0) >= FOCUS_H;
+  }
+
+  /** 难记程度：数字越大越该重点练（用于排序） */
+  function focusScore(rec) {
+    if (!rec) return 0;
+    return (Number(rec.w) || 0) * 2 + (Number(rec.h) || 0);
   }
 
   /** 是否到期（含逾期） */
@@ -70,6 +93,7 @@
       r.streak = (r.streak || 0) + 1;
     } else if (outcome === 'hard') {
       s = Math.max(1, Math.min(s, MAX_STAGE - 1));
+      r.h = (r.h || 0) + 1;
       r.streak = 0;
     } else {
       s = Math.max(1, Math.min(1, s));   // 遗忘：回到第 1 阶段，明天重来
@@ -120,6 +144,10 @@
     addDays: addDays,
     diffDays: diffDays,
     newRecord: newRecord,
+    needFocus: needFocus,
+    focusScore: focusScore,
+    FOCUS_W: FOCUS_W,
+    FOCUS_H: FOCUS_H,
     isDue: isDue,
     apply: apply,
     daysUntil: daysUntil,
