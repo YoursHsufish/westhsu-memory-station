@@ -9,7 +9,7 @@
  * 云端 API（/.cloud/**）一律不拦截，直接走网络。
  * 学习数据始终在 localStorage，与本缓存无关。
  */
-const CACHE = 'ebbinghaus-kids-v14';
+const CACHE = 'ebbinghaus-kids-v15';
 const ASSETS = [
   './',
   './index.html',
@@ -29,7 +29,9 @@ const ASSETS = [
   './js/cloud.js',
   './js/app.js',
   './manifest.webmanifest',
-  './assets/icon.svg'
+  './assets/icon.svg',
+  './assets/icon-192.png',
+  './assets/icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {

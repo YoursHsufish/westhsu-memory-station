@@ -8,8 +8,8 @@
 window.APP_META = {
   name: '记忆小站',
   subtitle: '艾宾浩斯遗忘曲线记忆练习',
-  version: '1.7.2',
-  build: '2026-11-01',
+  version: '1.7.3',
+  build: '2026-11-15',
   author: '许琮-Stephen Hsu',
   contact: 'xucong@westair.cn',
   license: 'MIT',
@@ -18,6 +18,14 @@ window.APP_META = {
   /* 版本更新记录（显示在「我的 → 底部关于卡片 → 声明」里）
    * 新版本在最上面；每次发版加一条即可，items 每条一句话，家长能看懂 */
   changelog: [
+    {
+      ver: '1.7.3', date: '2026-11-15',
+      items: [
+        '安卓 App 上架：可安装的 .apk（云端照常用现有 WorkBuddy 后台）',
+        '浏览器「添加到主屏幕」现在有正式图标（192/512 PNG）',
+        '离线单文件版与线上版同步到 1.7.3'
+      ]
+    },
     {
       ver: '1.7.2', date: '2026-11-01',
       items: [
