@@ -856,11 +856,11 @@
 
     html += '<div class="section-title"><h2>学习设置</h2></div>';
     html += '<div class="card">' +
-      rangeRow('每日新词（每项英语练习）', 'newEn', s.newEn, 0, 30, 1, '个') +
-      rangeRow('每日新字（每项中文练习）', 'newZh', s.newZh, 0, 30, 1, '个') +
-      rangeRow('每日新拼音（每项拼音练习）', 'newPy', s.newPy, 0, 20, 1, '个') +
-      rangeRow('每日练习目标', 'dailyGoal', s.dailyGoal, 10, 120, 5, '次') +
-      rangeRow('朗读语速', 'ttsRate', s.ttsRate, 0.5, 1.4, 0.1, '倍') +
+      stepperRow('每日新词（每项英语练习）', 'newEn', s.newEn, 0, 30, 1, '个') +
+      stepperRow('每日新字（每项中文练习）', 'newZh', s.newZh, 0, 30, 1, '个') +
+      stepperRow('每日新拼音（每项拼音练习）', 'newPy', s.newPy, 0, 20, 1, '个') +
+      stepperRow('每日练习目标', 'dailyGoal', s.dailyGoal, 10, 120, 5, '次') +
+      stepperRow('朗读语速', 'ttsRate', s.ttsRate, 0.5, 1.4, 0.1, '倍', 1) +
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0">' +
       '<span style="font-size:13.5px;font-weight:600;color:var(--ink-2)">自动朗读单词 / 汉字</span>' +
       '<button class="toggle' + (s.ttsAuto ? ' on' : '') + '" data-toggle="ttsAuto"></button></div>' +
@@ -966,6 +966,13 @@
         if (out) out.textContent = val + (input.getAttribute('data-unit') || '');
       };
     });
+    // 学习量步进器：− / 数字 / +（点数字可直接输入）
+    $$('[data-step]').forEach(function (b) {
+      b.onclick = function () { stepSetting(b); };
+    });
+    $$('[data-editkey]').forEach(function (b) {
+      b.onclick = function () { openNumberSheet(b); };
+    });
     $$('[data-toggle]').forEach(function (b) {
       b.onclick = function () {
         var key = b.getAttribute('data-toggle');
@@ -1033,12 +1040,95 @@
     return '已学 ' + learned + ' 张 · 掌握 ' + mastered + ' 张 · 学习 ' + days + ' 天';
   }
 
-  function rangeRow(label, key, val, min, max, step, unit) {
-    return '<div style="padding:8px 0">' +
-      '<div style="display:flex;justify-content:space-between;font-size:13.5px;font-weight:600;color:var(--ink-2)">' +
-      '<span>' + label + '</span><span id="val-' + key + '" style="color:var(--primary)">' + val + unit + '</span></div>' +
-      '<input type="range" data-range="' + key + '" data-unit="' + unit + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="width:100%" />' +
-      '</div>';
+  /**
+   * 学习量设置行：用「− 数字 +」步进器，不用滑条。
+   * 滑条的问题是手指稍微蹭到就改了值（家长反馈手滑把每日新字调乱）；
+   * 步进器每次只动一格，点中间数字还能直接输入精确值。
+   */
+  function stepperRow(label, key, val, min, max, step, unit, decimals) {
+    var shown = decimals ? Number(val).toFixed(decimals) : val;
+    var attr = 'data-min="' + min + '" data-max="' + max + '" data-inc="' + step +
+      '" data-unit="' + unit + '" data-dec="' + (decimals || 0) + '"';
+    return '<div style="padding:10px 0;display:flex;align-items:center;justify-content:space-between;gap:12px">' +
+      '<div style="flex:1;min-width:0">' +
+      '<div style="font-size:13.5px;font-weight:600;color:var(--ink-2);line-height:1.45">' + label + '</div>' +
+      '<div style="font-size:11px;color:var(--ink-3);margin-top:2px">可选 ' + min + '–' + max + unit + ' · 点数字直接输入</div>' +
+      '</div>' +
+      '<div class="stepper" style="flex:none;display:flex;align-items:center;gap:7px">' +
+      '<button type="button" class="step-btn" data-step="-1" data-key="' + key + '" ' + attr + ' aria-label="减少' + label + '">−</button>' +
+      '<button type="button" class="step-val" id="val-' + key + '" data-editkey="' + key + '" ' + attr + '>' + shown + unit + '</button>' +
+      '<button type="button" class="step-btn" data-step="1" data-key="' + key + '" ' + attr + ' aria-label="增加' + label + '">+</button>' +
+      '</div></div>';
+  }
+
+  function stepSetting(btn) {
+    var key = btn.getAttribute('data-key');
+    var dir = Number(btn.getAttribute('data-step')) || 0;
+    var min = Number(btn.getAttribute('data-min'));
+    var max = Number(btn.getAttribute('data-max'));
+    var inc = Number(btn.getAttribute('data-inc')) || 1;
+    var dec = Number(btn.getAttribute('data-dec')) || 0;
+    var unit = btn.getAttribute('data-unit') || '';
+    var p = Store.activeProfile();
+    if (!p) return;
+    var cur = Number((p.settings || {})[key]) || 0;
+    var next = Math.min(max, Math.max(min, Math.round((cur + dir * inc) * 10) / 10));
+    if (next === cur) return;
+    var patch = {}; patch[key] = next;
+    Store.updateSettings(p.id, patch);
+    var out = $('#val-' + key);
+    if (out) out.textContent = (dec ? next.toFixed(dec) : next) + unit;
+  }
+
+  /** 点中间的数字：弹出「直接输入」面板（预设档位 + 手动输入） */
+  function openNumberSheet(btn) {
+    var key = btn.getAttribute('data-editkey');
+    var min = Number(btn.getAttribute('data-min'));
+    var max = Number(btn.getAttribute('data-max'));
+    var inc = Number(btn.getAttribute('data-inc')) || 1;
+    var dec = Number(btn.getAttribute('data-dec')) || 0;
+    var unit = btn.getAttribute('data-unit') || '';
+    var p = Store.activeProfile();
+    if (!p) return;
+    var cur = Number((p.settings || {})[key]) || 0;
+
+    var presets = key === 'ttsRate' ? [0.8, 0.9, 1, 1.1, 1.2]
+      : key === 'dailyGoal' ? [20, 30, 50, 80, 100]
+        : [3, 5, 8, 10, 15, 20];
+
+    sheet.innerHTML = '<div class="sheet-handle"></div>' +
+      '<h3>设置数量</h3>' +
+      '<p class="sheet-sub">范围 ' + min + '–' + max + unit + '，也可以直接输入。</p>' +
+      '<div id="presetChips" style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px">' +
+      presets.map(function (v) {
+        return '<button type="button" class="chip" data-preset="' + v + '" style="padding:9px 16px;font-size:14px;font-weight:700;cursor:pointer">' + v + unit + '</button>';
+      }).join('') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      '<input id="numInput" type="number" inputmode="decimal" min="' + min + '" max="' + max + '" step="' + inc + '" value="' + cur + '" ' +
+      'style="flex:1;height:52px;border-radius:14px;border:1.5px solid var(--line,#e3e9f5);text-align:center;font-size:20px;font-weight:800;color:var(--ink);background:#fff" />' +
+      '<span style="font-size:15px;color:var(--ink-3)">' + unit + '</span>' +
+      '</div>' +
+      '<div style="height:14px"></div>' +
+      '<button class="btn btn-primary btn-block btn-lg" id="numOk">确定</button>' +
+      '<div style="height:8px"></div>' +
+      '<button class="btn btn-ghost btn-block" id="numCancel">取消</button>';
+    sheetMask.hidden = false;
+
+    var input = $('#numInput');
+    $$('#presetChips [data-preset]').forEach(function (c) {
+      c.onclick = function () { input.value = c.getAttribute('data-preset'); };
+    });
+    $('#numCancel').onclick = function () { sheetMask.hidden = true; };
+    $('#numOk').onclick = function () {
+      var v = Number(input.value);
+      if (!isFinite(v)) { toast('请输入数字'); return; }
+      v = Math.min(max, Math.max(min, Math.round(v * 10) / 10));
+      var patch = {}; patch[key] = v;
+      Store.updateSettings(p.id, patch);
+      sheetMask.hidden = true;
+      render();
+      toast('已设置为 ' + (dec ? v.toFixed(dec) : v) + unit);
+    };
   }
 
   /* ================= 换浏览器 / 换电脑 ================= */

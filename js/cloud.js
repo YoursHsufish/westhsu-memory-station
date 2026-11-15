@@ -108,7 +108,16 @@
           client.auth.onAuthStateChange(function (event, s) {
             if (event === 'SIGNED_OUT') {
               session = null;
-              if (state !== 'local') setState('signedout');
+              // 不要立刻认输：本机明明登录过却收到 SIGNED_OUT，多数是续期那一下没成功。
+              // 延迟 1.2s 再走一次 restore（内部自带重试），真被登出才会停留在未登录。
+              if (rememberedEmail() && state !== 'local') {
+                setState('checking');
+                delay(1200).then(function () {
+                  return restore().catch(function () {});
+                });
+              } else if (state !== 'local') {
+                setState('signedout');
+              }
             } else if (s && (s.accessToken || s.session)) {
               session = s.session || s;
               if (state === 'signedout' || state === 'checking') setState('synced');
@@ -170,10 +179,15 @@
     };
   }
 
-  /** 单张卡：取最近学习日较新的一份；同一天则取阶段高的（更可能是准确的） */
+  /**
+   * 单张卡：哪台练得更晚用哪台（u = 写入时间戳，精确到毫秒）；
+   * 老数据没有 u 时退回「最近学习日」，同一天再取阶段高的。
+   */
   function pickRec(a, b) {
     if (!a) return b;
     if (!b) return a;
+    var ua = Number(a.u) || 0, ub = Number(b.u) || 0;
+    if (ua !== ub) return ua > ub ? a : b;
     var la = a.last || '', lb = b.last || '';
     if (la !== lb) return la > lb ? a : b;
     return (b.s || 0) > (a.s || 0) ? b : a;
@@ -184,10 +198,20 @@
     var changed = false;
     var modules = Store.MODULES;
 
-    if (!local.settings || !Object.keys(local.settings).length) {
-      local.settings = remote.settings || {};
-      changed = true;
-    }
+    // ---- 设置（每日新词/新字/学习量等）：按「谁改得晚用谁」，并互相补齐缺的键 ----
+    // 注意不能只在本地为空时才抄云端——那样改过的设置永远同步不出去。
+    (function () {
+      var ls = local.settings || {};
+      var rs = remote.settings || {};
+      var lt = Number(ls.__ts) || 0;
+      var rt = Number(rs.__ts) || 0;
+      var merged = Object.assign({}, rt > lt ? ls : rs, rt > lt ? rs : ls);   // 旧的垫底，新的覆盖
+      if (!local.settings || JSON.stringify(merged) !== JSON.stringify(ls)) {
+        local.settings = merged;
+        changed = true;
+      }
+    })();
+
     if (!local.data) local.data = {};
 
     modules.forEach(function (m) {
@@ -377,7 +401,46 @@
   function acceptSession(s) {
     session = s;
     setState('synced');
+    startAutoSync();
     return syncNow({ force: false }).then(function () { return true; }, function () { return true; });
+  }
+
+  /* ---------- 多设备自动同步 ----------
+   * 两台设备同时用一个账号时，光靠"谁操作谁上传"不够：
+   * 另一台不点就永远看不到新进度。所以登录后按周期拉一次，
+   * 切回页面 / 网络恢复时立刻拉一次，离开页面前把本机推上去。
+   * 合并规则见 pickRec / mergeInto：同一张卡谁写得晚（u 时间戳）用谁，
+   * 设置同理（settings.__ts），所以"始终以最新的数据为准"。
+   */
+  var autoSyncTimer = null;
+  var AUTO_SYNC_MS = 3 * 60 * 1000;
+  var hooksBound = false;
+
+  function startAutoSync() {
+    if (!hooksBound) {
+      hooksBound = true;
+      try {
+        global.document.addEventListener('visibilitychange', function () {
+          if (!session) return;
+          if (global.document.hidden) flushPush();           // 切走前把本地最新进度推上去
+          else syncNow({ force: true }).catch(function () {}); // 切回来立刻拉
+        });
+        global.addEventListener('online', function () {
+          if (session) syncNow({ force: true }).catch(function () {});
+        });
+      } catch (e) { /* 非浏览器环境忽略 */ }
+    }
+    // 周期同步的触发入口（jsdom 测试里不开常驻定时器，但保留这个入口可单测）
+    global.__cloudAutoSyncTick = function () {
+      if (session) return syncNow({ force: false });
+      return Promise.resolve(null);
+    };
+    // 测试环境（jsdom）里不开常驻定时器，否则进程退不掉
+    if (autoSyncTimer || global.__NO_CLOUD_TIMER__) return;
+    autoSyncTimer = setInterval(function () {
+      if (!session || applying) return;
+      syncNow({ force: false }).catch(function () {});
+    }, AUTO_SYNC_MS);
   }
 
   /** 续期重试（带 1.2s 间隔，最多两次），弱网下不至于立刻显示未登录 */

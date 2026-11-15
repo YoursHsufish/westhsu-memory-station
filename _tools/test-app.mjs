@@ -275,7 +275,7 @@ async function main() {
   // 发音说明必须与新实现一致（中文=内置音节音频，英语=浏览器引擎）
   ok(/内置音节音频/.test(text(w)), 'T9 底部说明指明中文用内置音节音频');
   ok(!/语音由浏览器内置引擎提供/.test(text(w)), 'T9 不再写「语音由浏览器内置引擎提供」');
-  ok($$(w, '[data-range]').length === 5, 'T9 5 个可调设置项');
+  ok($$(w, '[data-editkey]').length === 5, 'T9 5 个可调设置项（步进器，不再是滑条）');
   const nameBefore = w.Store.activeProfile().name;
   ok(nameBefore === '小雨', 'T9 当前档案正确');
 
@@ -379,6 +379,46 @@ async function main() {
 
   // T18 运行期无脚本错误
   ok(runtimeErrors.length === 0, 'T18 全程无 JS 运行错误', runtimeErrors.slice(0, 2).join(' | '));
+
+  // ---------- T19 学习量设置：步进器代替滑条（防手滑） + 设置带时间戳 ----------
+  w.location.hash = '#/me';
+  w.App.render();
+  await wait(80);
+  ok(!w.document.querySelector('input[type="range"]'), 'T19 学习设置不再有滑条（不会一蹭就改值）');
+  const stepBtns = w.document.querySelectorAll('[data-step]');
+  ok(stepBtns.length >= 10, 'T19 每项都有 − / + 步进按钮', stepBtns.length + ' 个');
+
+  const p19 = w.Store.activeProfile();
+  const zh0 = p19.settings.newZh;
+  const plus = w.document.querySelector('[data-step="1"][data-key="newZh"]');
+  plus.click();
+  ok(w.Store.activeProfile().settings.newZh === zh0 + 1, 'T19 点 + 数量增加 1', zh0 + ' → ' + w.Store.activeProfile().settings.newZh);
+  ok(/个/.test(w.document.getElementById('val-newZh').textContent), 'T19 数字显示同步更新');
+
+  const minus = w.document.querySelector('[data-step="-1"][data-key="newZh"]');
+  minus.click(); minus.click();
+  ok(w.Store.activeProfile().settings.newZh === zh0 - 1, 'T19 点 − 数量减少', '→ ' + w.Store.activeProfile().settings.newZh);
+
+  // 边界：不会调出范围
+  const minusAll = w.document.querySelector('[data-step="-1"][data-key="newZh"]');
+  for (let i = 0; i < 40; i++) minusAll.click();
+  ok(w.Store.activeProfile().settings.newZh === 0, 'T19 到下限 0 不再减少', String(w.Store.activeProfile().settings.newZh));
+  const plusAll = w.document.querySelector('[data-step="1"][data-key="newZh"]');
+  for (let i = 0; i < 45; i++) plusAll.click();
+  ok(w.Store.activeProfile().settings.newZh === 30, 'T19 到上限 30 不再增加', String(w.Store.activeProfile().settings.newZh));
+
+  // 点中间数字 → 直接输入
+  w.document.getElementById('val-newZh').click();
+  await wait(60);
+  ok(!!w.document.getElementById('numInput'), 'T19 点数字弹出直接输入面板');
+  w.document.getElementById('numInput').value = '7';
+  w.document.getElementById('numOk').click();
+  await wait(80);
+  ok(w.Store.activeProfile().settings.newZh === 7, 'T19 直接输入 7 生效', String(w.Store.activeProfile().settings.newZh));
+
+  // 设置改动要打时间戳（供云端按「谁改得晚用谁」合并）
+  ok(Number(w.Store.activeProfile().settings.__ts) > 0, 'T19 设置改动打了时间戳 __ts（可同步）',
+    String(w.Store.activeProfile().settings.__ts));
 
   // 汇总
   const pass = results.filter((r) => r.pass).length;

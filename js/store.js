@@ -288,7 +288,11 @@
   function updateSettings(id, patch) {
     var p = getProfile(id);
     if (!p) return null;
+    if (!p.settings) p.settings = {};
     Object.assign(p.settings, patch);
+    // __ts：设置最后一次被改动的时间戳（毫秒）。云端同步时按「谁改得晚用谁」，
+    // 否则另一台设备的旧设置会把新设置盖掉。放在 settings 对象里，不需要改表结构。
+    p.settings.__ts = Date.now();
     save();
     return p.settings;
   }

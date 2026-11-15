@@ -50,6 +50,9 @@ export function boot(opt = {}) {
       } else {
         window.__AUDIO_OFF__ = true;
       }
+      // jsdom 测试里不许 cloud.js 开常驻定时器，否则 node 进程退不掉
+      // （需要测自动同步的用例用 opt.autoSync 打开）
+      window.__NO_CLOUD_TIMER__ = !opt.autoSync;
       // 额外的注入钩子（测试用假 speechSynthesis 等），放在最后执行
       if (typeof opt.before === 'function') opt.before(window);
       if (opt.userAgent) {

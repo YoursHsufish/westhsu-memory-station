@@ -449,6 +449,109 @@ async function main() {
     ok(devB.w.Store.getRec('zh_recog', '的'), 'C13 设备B 本地也合并进了「的」');
   }
 
+  /* ================= C14 设置同步 / 最新数据为准 / 自动同步 ================= */
+
+  // 学习量设置（每日新字等）必须能同步到另一台设备
+  {
+    const server = makeServer();
+    const mkState = (settings) => JSON.stringify({
+      v: 2, active: 'kid-1',
+      profiles: [{ id: 'kid-1', name: '娃', avatar: '🐻', settings, data: { zh_recog: {} }, log: {} }]
+    });
+    const devA = boot({
+      mockCloud: () => flatClient(server, 'uA'),
+      seed: { 'ebbinghaus.kids.v1': mkState({ newZh: 5, __ts: 1000 }) }
+    });
+    await wait(150);
+    await devA.w.Cloud.flushPush();
+    await wait(120);
+
+    const devB = boot({
+      mockCloud: () => flatClient(server, 'uA'),
+      seed: { 'ebbinghaus.kids.v1': mkState({ newZh: 2, __ts: 2000 }) }
+    });
+    await wait(150);
+    devB.w.Store.updateSettings('kid-1', { newZh: 12 });   // 改学习量
+    await devB.w.Cloud.flushPush();
+    await wait(200);
+    ok((server.rows[0].settings || {}).newZh === 12, 'C14 设备B 改的学习量同步到云端',
+      JSON.stringify(server.rows[0].settings));
+
+    await devA.w.Cloud.flushPush();
+    await wait(220);
+    const aSet = devA.w.Store.getProfile('kid-1').settings;
+    ok(aSet.newZh === 12, 'C14 设备A 拉到最新学习量（设置不再只在本地为空时才抄）', String(aSet.newZh));
+
+    // 旧设备后改 → 覆盖新设备的旧值（按 __ts 谁改得晚用谁）
+    devA.w.Store.updateSettings('kid-1', { newEn: 3 });
+    await devA.w.Cloud.flushPush();
+    await wait(200);
+    await devB.w.Cloud.flushPush();
+    await wait(220);
+    const bSet = devB.w.Store.getProfile('kid-1').settings;
+    ok(bSet.newEn === 3, 'C14 设置改动按「谁改得晚用谁」合并', JSON.stringify({ newEn: bSet.newEn, newZh: bSet.newZh }));
+  }
+
+  // 同一张卡同一天冲突：按写入时间戳 u 取较新的一份
+  {
+    const server = makeServer();
+    const mkCards = (cards) => JSON.stringify({
+      v: 2, active: 'kid-1',
+      profiles: [{ id: 'kid-1', name: '娃', avatar: '🐻', settings: {}, data: { zh_recog: cards }, log: {} }]
+    });
+    const devA = boot({
+      mockCloud: () => flatClient(server, 'uA'),
+      seed: { 'ebbinghaus.kids.v1': mkCards({ '的': { s: 3, w: 0, c: 5, first: '2026-11-15', last: '2026-11-15', u: 5000 } }) }
+    });
+    await wait(150);
+    await devA.w.Cloud.flushPush();
+    await wait(120);
+
+    const devB = boot({
+      mockCloud: () => flatClient(server, 'uA'),
+      seed: { 'ebbinghaus.kids.v1': mkCards({ '的': { s: 1, w: 2, c: 1, first: '2026-11-15', last: '2026-11-15', u: 9000 } }) }
+    });
+    await wait(150);
+    await devB.w.Cloud.flushPush();
+    await wait(200);
+    await devA.w.Cloud.flushPush();
+    await wait(220);
+    const r = devA.w.Store.getRec('zh_recog', '的');
+    ok(r && r.s === 1 && r.w === 2, 'C14 同日冲突按 u 时间戳取较新（而不是被旧的盖掉）', JSON.stringify(r));
+  }
+
+  // 自动同步：切走前上传、切回时拉取
+  {
+    const server = makeServer();
+    const devA = boot({
+      mockCloud: () => flatClient(server, 'uA'),
+      seed: {
+        'ebbinghaus.kids.v1': JSON.stringify({
+          v: 2, active: 'kid-1',
+          profiles: [{ id: 'kid-1', name: '娃', avatar: '🐻', settings: {}, data: { zh_recog: { '的': { s: 1, w: 0, c: 1, first: '2026-11-15', last: '2026-11-15', u: 1 } } }, log: {} }]
+        })
+      }
+    });
+    await wait(180);
+    ok(typeof devA.w.__cloudAutoSyncTick === 'function', 'C14 周期同步入口已就绪');
+
+    // 切走页面 → 应自动上传
+    Object.defineProperty(devA.w.document, 'hidden', { value: true, configurable: true });
+    devA.w.document.dispatchEvent(new devA.w.Event('visibilitychange'));
+    await wait(250);
+    ok(server.calls.some((c) => c.op === 'upsert'), 'C14 切走页面前自动把进度传上云');
+
+    // 云端有另一台的进度 → 周期 tick / 切回页面会拉下来
+    server.rows.push({
+      id: 9, owner_id: 'uA', kid_key: 'kid-1', kid_name: '娃', avatar: '🐻',
+      settings: {}, log: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      cards: { zh_recog: { '一': { s: 2, w: 0, c: 3, first: '2026-11-15', last: '2026-11-15', u: 99999 } } }
+    });
+    await devA.w.__cloudAutoSyncTick();
+    await wait(200);
+    ok(devA.w.Store.getRec('zh_recog', '一'), 'C14 周期自动同步拉到另一台设备练过的内容');
+  }
+
   /* ================= 汇总 ================= */
   console.log('');
   let pass = 0;

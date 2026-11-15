@@ -105,6 +105,9 @@
     r.due = addDays(today, INTERVALS[s] || 1);
     if (!r.first) r.first = today;
     r.last = today;
+    // u：这一行最后一次被写入的时间戳（毫秒）。多台设备同步时
+    // 「哪台练得更晚用哪台」就靠它判断，比只看日期精确。
+    r.u = Date.now();
     return r;
   }
 

@@ -449,6 +449,25 @@ input[type="range"] { flex: 1; accent-color: var(--primary); height: 26px; }
 .toggle.on { background: linear-gradient(135deg, #5b7cff, #7b5cf6); }
 .toggle.on::after { transform: translateX(19px); }
 
+/* ================= 学习量步进器（代替滑条，防手滑误触） ================= */
+.step-btn {
+  width: 42px; height: 42px; flex: none; border-radius: 13px;
+  border: 1.5px solid var(--line); background: var(--surface);
+  color: var(--primary); font-size: 21px; font-weight: 700; line-height: 1;
+  cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.step-btn:active { background: var(--primary-weak); transform: scale(.93); }
+.step-btn[disabled] { opacity: .35; }
+.step-val {
+  min-width: 64px; height: 42px; padding: 0 8px; border-radius: 13px;
+  border: 1.5px solid var(--line); background: var(--surface);
+  color: var(--ink); font-size: 15px; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.step-val:active { border-color: var(--primary); }
+
+
 /* ================= 档案 ================= */
 .profile-list { display: grid; gap: 10px; }
 .profile-item {
