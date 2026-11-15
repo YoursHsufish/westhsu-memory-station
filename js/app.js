@@ -398,7 +398,7 @@
       '<div style="height:10px"></div>' +
       '<button class="btn btn-ghost btn-block" id="wImport">从备份导入（换浏览器/换电脑）</button>' +
       '<input type="file" id="wImportFile" accept="application/json,.json" hidden />' +
-      (Cloud && Cloud.status().canUseCloud && !Cloud.status().signedIn
+      (Cloud && Cloud.status().canUseCloud && !Cloud.status().signedIn && !Cloud.status().checking
         ? '<div style="height:10px"></div><button class="btn btn-ghost btn-block" id="wCloud">☁️ 已有账号？登录同步</button>'
         : '') +
       '</div>' +
@@ -1101,6 +1101,7 @@
 
   function cloudStatusText(st) {
     if (st.needsOnline) return { tone: '#8a5300', text: '离线文件版 · 云端同步需用线上网址' };
+    if (st.checking) return { tone: '#4f6bff', text: '正在确认云端登录状态…' };
     if (!st.signedIn) return { tone: '#8b93aa', text: '未登录 · 进度只存在本浏览器' };
     if (st.state === 'syncing') return { tone: '#4f6bff', text: '正在同步…' };
     if (st.state === 'offline') return { tone: '#d92b52', text: '网络不通，改动已存本地，联网后自动补传' };
@@ -1132,6 +1133,8 @@
     } else if (st.needsOnline) {
       html += '<div style="font-size:12px;color:var(--ink-3);line-height:1.7">你现在打开的是离线文件版。云端登录需要浏览器同源环境，改用发布后的线上网址打开就能登录，两台设备会自动接上同一份进度。</div>';
       html += '<div style="margin-top:10px"><button class="btn btn-ghost" id="btnPrivacy" style="padding:8px 14px;font-size:13px">隐私说明</button></div>';
+    } else if (st.checking) {
+      html += '<div style="font-size:12px;color:var(--ink-3);line-height:1.7">正在确认云端登录状态，稍等一下…（如果你还没登录过，这里会出现登录按钮）</div>';
     } else {
       html += '<div style="font-size:12px;color:var(--ink-3);line-height:1.7">用邮箱注册后，同一账号在各设备看到同一份进度。不注册也照常能用，进度会好好待在这台电脑上。</div>';
       html += '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
@@ -2616,8 +2619,9 @@
   render();
 
   // 恢复上次的登录态（异步，不阻塞首屏）
+  // 不论结果是登录还是未登录都要重画一次：否则「正在确认登录状态」会一直挂着
   if (Cloud && Cloud.originUsable()) {
-    Cloud.restore().then(function (ok) { if (ok) render(); }, function () {});
+    Cloud.restore().then(function () { render(); }, function () { render(); });
   }
 
   window.App = {

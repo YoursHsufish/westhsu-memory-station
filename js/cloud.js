@@ -43,7 +43,8 @@
   var pushTimer = null;
   var pushing = false;
   var pendingPush = false;
-  var state = 'local';        // local | signedout | syncing | synced | offline | error
+  // checking：正在确认登录态（restore 没回来之前不要显示「未登录」，那只是时序假象）
+  var state = 'checking';     // checking | local | signedout | syncing | synced | offline | error
   var lastError = '';
   var lastSyncAt = 0;
   var listeners = [];
@@ -100,6 +101,22 @@
         publishableKey: CFG.publishableKey,
         fetch: bridgeFetch
       });
+      // 订阅 SDK 的登录态事件：token 续期成功 / 被登出时同步本模块的状态，
+      // 避免「页面上的登录态」和「SDK 里的登录态」各说各话。
+      try {
+        if (client.auth && client.auth.onAuthStateChange) {
+          client.auth.onAuthStateChange(function (event, s) {
+            if (event === 'SIGNED_OUT') {
+              session = null;
+              if (state !== 'local') setState('signedout');
+            } else if (s && (s.accessToken || s.session)) {
+              session = s.session || s;
+              if (state === 'signedout' || state === 'checking') setState('synced');
+            }
+            emit();
+          });
+        }
+      } catch (e) { /* 老版本 SDK 没有这个接口，忽略 */ }
       return client;
     });
   }
@@ -291,7 +308,9 @@
     if (!session) return Promise.resolve();
     if (pushing) { pendingPush = true; return Promise.resolve(); }
     pushing = true;
-    return pushRows().then(function () {
+    // 多设备同时在用一个账号时，不能「只推不拉」：
+    // 另一台设备的进度会整包被覆盖掉。所以推送前先拉取合并（syncNow 内部逐卡合并）。
+    return syncNow({ force: true }).then(function () {
       lastSyncAt = Date.now();
       setState('synced');
     }).catch(function (err) {
@@ -303,6 +322,23 @@
   }
 
   /* ---------- 认证 ---------- */
+
+  /**
+   * 从 SDK 的响应里取出会话对象。
+   *
+   * 注意：这个 SDK 的 { data } 里**直接就是会话**（{ accessToken, refreshToken, expiresAt, user }），
+   * 不是 { session: ... } 的包裹结构。以前写成 res.data.session 永远取不到值，
+   * 结果每次刷新页面都误判成「未登录」——手机 App 下拉刷新就掉登录，就是这个原因。
+   * 这里两种结构都兼容。
+   */
+  function pickSession(res) {
+    if (!res || res.error || !res.data) return null;
+    var d = res.data;
+    if (d.session) return d.session;
+    if (d.accessToken || d.access_token || (d.user && d.user.id)) return d;
+    return null;
+  }
+
   function restore() {
     if (!originUsable() || !configured()) {
       setState('local');
@@ -316,19 +352,51 @@
         setState(isNetworkError(res.error) ? 'offline' : 'signedout', res.error);
         return false;
       }
-      var s = res.data && res.data.session;
-      if (s) {
-        session = s;
-        setState('synced');
-        return syncNow({ force: false }).then(function () { return true; }, function () { return true; });
+      var s = pickSession(res);
+      if (!s) {
+        // 只有「这台设备以前登录过」才值得再试一次续期（弱网下偶发失败）；
+        // 全新设备/从未登录的访客直接给结论，别让人对着「确认中」干等。
+        if (!rememberedEmail()) {
+          setState('signedout');
+          return false;
+        }
+        return retryRefresh().then(function (s2) {
+          if (s2) return acceptSession(s2);
+          setState('signedout');
+          return false;
+        });
       }
-      setState('signedout');
-      return false;
+      return acceptSession(s);
     }).catch(function (err) {
       setState(isNetworkError(err) ? 'offline' : 'error', err);
       return false;
     });
   }
+
+  /** 拿到会话后的统一收尾：记录状态并立刻同步一次 */
+  function acceptSession(s) {
+    session = s;
+    setState('synced');
+    return syncNow({ force: false }).then(function () { return true; }, function () { return true; });
+  }
+
+  /** 续期重试（带 1.2s 间隔，最多两次），弱网下不至于立刻显示未登录 */
+  function retryRefresh() {
+    var attempt = function (n) {
+      return ensureClient().then(function (c) {
+        return c.auth.refreshSession ? c.auth.refreshSession() : c.auth.getSession();
+      }).then(function (r) {
+        var s = pickSession(r);
+        if (s) return s;
+        return n > 0 ? delay(1200).then(function () { return attempt(n - 1); }) : null;
+      }, function () {
+        return n > 0 ? delay(1200).then(function () { return attempt(n - 1); }) : null;
+      });
+    };
+    return attempt(1);
+  }
+
+  function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
   function sendCode(email) {
     var addr = String(email || '').trim();
@@ -384,7 +452,7 @@
   /** SDK 的 verifyOtp 内部走 signIn（老用户）或 signUp（新用户），
    *  两者都经由 postForSession 提交，返回结构在不同版本里不一致：
    *  可能是 { data: { session } }，也可能 data 本身就是 session。
-   *  所以这里不猜结构，一律以 getSession() 为准（SDK 已经把会话落盘）。 */
+   *  所以这里不猜结构，统一用 pickSession 兼容两种。 */
   function resolveSession(c, data) {
     var fromData = function () {
       if (!data) return null;
@@ -394,8 +462,7 @@
       return null;
     };
     return c.auth.getSession().then(function (r) {
-      var got = r && !r.error && r.data && r.data.session;
-      return got || fromData();
+      return pickSession(r) || fromData();
     }, function () {
       return fromData();
     });
@@ -520,15 +587,12 @@
 
   /* ---------- 状态快照 ---------- */
   function status() {
-    var remembered = '';
-    try {
-      var raw = global.localStorage.getItem(SESSION_KEY);
-      if (raw) remembered = JSON.parse(raw).email || '';
-    } catch (e) {}
-    // 有些版本的 session.user 只有 id，没有 email，这里回退到上次登录记住的邮箱
-    var email = (session && session.user && (session.user.email || session.user.name)) || remembered || '';
+    var remembered = rememberedEmail();
+    // 有些版本的 session.user 只有 id/name，没有 email，这里逐级回退
+    var email = currentEmail() || remembered || '';
     return {
       state: state,
+      checking: state === 'checking',
       signedIn: !!session,
       email: email,
       rememberedEmail: remembered,
@@ -549,7 +613,15 @@
   var INVITES = 'app_invites';
 
   function currentEmail() {
-    return (session && session.user && session.user.email) || '';
+    var u = session && session.user;
+    return (u && (u.email || (u.raw && u.raw.email))) || rememberedEmail() || '';
+  }
+
+  function rememberedEmail() {
+    try {
+      var raw = global.localStorage.getItem(SESSION_KEY);
+      return raw ? (JSON.parse(raw).email || '') : '';
+    } catch (e) { return ''; }
   }
 
   function currentUid() {

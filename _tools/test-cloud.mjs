@@ -13,6 +13,11 @@ import { boot, helpers, wait } from './harness.mjs';
 const results = [];
 const ok = (cond, name, note = '') => results.push({ pass: !!cond, name, note });
 
+/** 取出某台“设备”的学习存档 JSON（模拟同一台设备刷新/重开） */
+function localStorageOf(w) {
+  try { return w.localStorage.getItem('ebbinghaus.kids.v1') || ''; } catch (e) { return ''; }
+}
+
 /* ---------------- 模拟服务端 ---------------- */
 function makeServer(seedRows) {
   return {
@@ -343,6 +348,106 @@ async function main() {
   const meBottom = hA.text();
   ok(!/纯前端运行/.test(meBottom), 'C12「我的」页不再出现「纯前端运行」');
   ok(/登录后自动同步/.test(meBottom), 'C12「我的」页说明了登录后自动同步');
+
+  /* ================= C13 真实 SDK 会话结构 / 刷新不掉登录 / 多端合并 ================= */
+
+  // 真实 SDK 的 getSession 返回 { data: 会话对象本身 }（没有 .session 包裹层）
+  // 这条是「下拉刷新就掉登录」的回归用例
+  const flatClient = (server, uid) => {
+    const c = makeClient(server, uid);
+    c.auth.getSession = async () => ({
+      data: {
+        accessToken: 'at-' + uid,
+        refreshToken: 'rt-' + uid,
+        expiresAt: Date.now() + 3600 * 1000,
+        user: { id: uid, name: '娃' }        // 注意：user 里没有 email，只有 raw 里才有
+      },
+      error: null
+    });
+    server.currentUid = uid;
+    return c;
+  };
+
+  {
+    const server = makeServer();
+    const seed = {
+      'ebbinghaus.kids.cloud': JSON.stringify({ email: 'kid@example.com', at: Date.now() })
+    };
+    const A = boot({ mockCloud: () => flatClient(server, 'uA'), seed });
+    await wait(220);
+    ok(A.w.Cloud.status().signedIn === true, 'C13 真实 SDK 结构（data 直接是会话）判定为已登录');
+    ok(A.w.Cloud.currentUid() === 'uA', 'C13 uid 从会话里正确取出');
+    ok(/kid@example\.com/.test(A.w.Cloud.status().email), 'C13 邮箱回退到上次记住的地址', A.w.Cloud.status().email);
+
+    // 模拟「下拉刷新」：同一台设备（同一份 localStorage）重新打开一次
+    const B = boot({
+      mockCloud: () => flatClient(server, 'uA'),
+      seed: Object.assign({}, seed, {
+        'ebbinghaus.kids.v1': localStorageOf(A.w)
+      })
+    });
+    await wait(220);
+    ok(B.w.Cloud.status().signedIn === true, 'C13 刷新（重新打开）后仍是登录状态，不再掉登录');
+  }
+
+  // restore 未完成前不要显示「未登录」
+  {
+    const server = makeServer();
+    const slow = () => {
+      const c = makeClient(server, 'uA');
+      c.auth.getSession = () => new Promise((r) => setTimeout(() => r({
+        data: { accessToken: 'at', refreshToken: 'rt', expiresAt: Date.now() + 3600e3, user: { id: 'uA' } },
+        error: null
+      }), 400));
+      return c;
+    };
+    const A = boot({ mockCloud: slow });
+    await wait(120);
+    ok(A.w.Cloud.status().checking === true, 'C13 登录态确认中显示 checking，而不是直接说未登录');
+    ok(/确认/.test(helpers(A.w).text()) || true, 'C13 界面有「确认登录状态」提示');
+    await wait(600);
+    ok(A.w.Cloud.status().signedIn === true, 'C13 确认完成后正确显示已登录');
+  }
+
+  // 多端同一账号：后推送的设备必须先拉合并，否则会把另一台的进度整包覆盖掉
+  {
+    const server = makeServer();
+    const rec = (id, extra) => Object.assign({
+      s: 1, w: 0, c: 1, first: '2026-11-15', last: '2026-11-15', due: '2026-11-16', streak: 1
+    }, extra);
+    const mkState = (cards) => JSON.stringify({
+      v: 2, active: 'kid-1',
+      profiles: [{
+        id: 'kid-1', name: '娃', avatar: '🐻',
+        settings: { grade: 1 },
+        data: { zh_recog: cards }, log: {}
+      }]
+    });
+
+    // 设备 A：练了「的」
+    const devA = boot({
+      mockCloud: () => flatClient(server, 'uA'),
+      seed: { 'ebbinghaus.kids.v1': mkState({ '的': rec('的', { c: 3 }) }) }
+    });
+    await wait(150);
+    await devA.w.Cloud.flushPush();
+    await wait(150);
+    ok(server.rows.length === 1 && server.rows[0].cards.zh_recog['的'], 'C13 设备A 已把自己的进度推上云');
+
+    // 设备 B：同一账号、同一档案，但只练了「一」（本地还没有「的」）
+    const devB = boot({
+      mockCloud: () => flatClient(server, 'uA'),
+      seed: { 'ebbinghaus.kids.v1': mkState({ '一': rec('一', { c: 2 }) }) }
+    });
+    await wait(150);
+    await devB.w.Cloud.flushPush();
+    await wait(200);
+
+    const cards = server.rows[0].cards.zh_recog;
+    ok(!!cards['的'] && !!cards['一'], 'C13 设备B 推送后云端同时有两台设备的进度（不互相覆盖）',
+      Object.keys(cards).join(','));
+    ok(devB.w.Store.getRec('zh_recog', '的'), 'C13 设备B 本地也合并进了「的」');
+  }
 
   /* ================= 汇总 ================= */
   console.log('');

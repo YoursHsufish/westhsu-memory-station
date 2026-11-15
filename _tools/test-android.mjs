@@ -59,7 +59,7 @@ function main() {
   const webVer = (meta.match(/version: '([^']+)'/) || [])[1];
   const appVer = (gradle.match(/versionName = "([^"]+)"/) || [])[1];
   ok(!!webVer && webVer === appVer, 'B6 App 版本号与网页版一致', 'web ' + webVer + ' / app ' + appVer);
-  ok(/versionCode = 1/.test(gradle), 'B7 versionCode 存在');
+  ok(/versionCode = \d+/.test(gradle), 'B7 versionCode 存在');
 
   const wrap = read('gradle/wrapper/gradle-wrapper.properties');
   ok(/gradle-8\.\d+-bin\.zip/.test(wrap), 'B8 Gradle Wrapper 指向 8.x 发行包');
