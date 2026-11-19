@@ -23,6 +23,7 @@
   --shadow-sm: 0 2px 8px rgba(28, 45, 90, .06);
   --shadow: 0 10px 30px rgba(40, 62, 120, .10);
   --shadow-lg: 0 20px 50px rgba(40, 62, 120, .16);
+  --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --font: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -63,7 +64,7 @@ h1, h2, h3, h4, p { margin: 0; }
   position: sticky; top: 0; z-index: 30;
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px 10px;
+  padding: calc(14px + var(--safe-t)) 18px 10px;
   background: linear-gradient(180deg, rgba(244, 247, 255, .96) 60%, rgba(244, 247, 255, 0));
   backdrop-filter: blur(10px);
 }
@@ -258,14 +259,14 @@ h1, h2, h3, h4, p { margin: 0; }
   position: fixed; inset: 0; z-index: 60;
   background: linear-gradient(180deg, #f6f8ff 0%, #eef2ff 100%);
   display: flex; flex-direction: column;
-  padding: 0 0 calc(18px + var(--safe-b));
+  padding: var(--safe-t) 0 calc(18px + var(--safe-b));
   animation: sheetUp .26s ease;
 }
 @keyframes sheetUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 .session-head { display: flex; align-items: center; gap: 12px; padding: 16px 18px 10px; }
 .session-head .close-x {
-  width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center;
-  background: #fff; border: 1px solid var(--line); font-size: 16px; color: var(--ink-2);
+  width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+  background: #fff; border: 1px solid var(--line); font-size: 18px; color: var(--ink-2);
   box-shadow: var(--shadow-sm);
 }
 .session-progress { flex: 1; }

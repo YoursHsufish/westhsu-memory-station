@@ -15,7 +15,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(process.cwd());
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
-const FILES_PRE = ['js/meta.js', 'js/strings.js', 'js/data-en.js', 'js/data-zh.js', 'js/data-py.js', 'js/py-dict.js', 'js/audio-manifest.js', 'js/srs.js', 'js/store.js', 'js/speech.js'];
+const FILES_PRE = ['js/meta.js', 'js/strings.js', 'js/data-en.js', 'js/data-zh.js', 'js/data-py.js', 'js/py-dict.js', 'js/audio-manifest.js', 'js/en-audio-manifest.js', 'js/srs.js', 'js/store.js', 'js/speech.js'];
 const FILE_CLOUD = 'js/cloud.js';
 const FILES_POST = ['js/app.js'];
 

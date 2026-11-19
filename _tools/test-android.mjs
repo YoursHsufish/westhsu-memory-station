@@ -92,6 +92,15 @@ function main() {
   ok(/FLAG_KEEP_SCREEN_ON/.test(kt), 'E6 学习时屏幕常亮');
   ok(/loadUrl\(getString\(R\.string\.site_url\)\)/.test(kt), 'E7 启动即加载入口地址');
 
+  /* ---------- E2. 全面屏 / 刘海 / 挖孔屏安全区 ---------- */
+  ok(/WindowCompat\.setDecorFitsSystemWindows\(window, false\)/.test(kt), 'E8 启用 edge-to-edge 全面屏');
+  ok(/Type\.systemBars\(\)/.test(kt) && /Type\.displayCutout\(\)/.test(kt), 'E9 同时处理状态栏与摄像头挖孔');
+  ok(/setPadding\(safe\.left, safe\.top, safe\.right, safe\.bottom\)/.test(kt), 'E10 按安全区给根布局加 padding');
+  ok(/isAppearanceLightStatusBars = true/.test(kt), 'E11 状态栏用深色图标（浅底看得清）');
+  ok(/android:id="@\+id\/root"/.test(read('app/src/main/res/layout/activity_main.xml')), 'E12 根布局有 id 供 insets 使用');
+  const css = fs.readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  ok(/--safe-t:\s*env\(safe-area-inset-top/.test(css), 'E13 网页顶栏也适配安全区（浏览器端）');
+
   /* ---------- F. 备份导入导出 ---------- */
   ok(/onShowFileChooser/.test(kt), 'F1 支持「导入备份」选文件');
   ok(/addJavascriptInterface\(SaveBridge\(\), "Android"\)/.test(kt), 'F2 有保存文件的 JS 桥');

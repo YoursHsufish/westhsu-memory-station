@@ -922,7 +922,7 @@
       '</div></button>' +
       '<div style="font-size:12px;color:var(--ink-3);line-height:1.8;padding:0 6px 6px">' +
       '本地随时可用，登录后自动同步；换设备先用「导出备份」再导入也可。' +
-      '中文发音用内置音节音频（离线也能读），英语用浏览器自带的语音引擎。' +
+      '中文和英语都用内置音频（离线也能读），不用装语音包。' +
       '</div>';
 
     view.innerHTML = html;
@@ -1219,7 +1219,11 @@
         '<button class="btn btn-ghost" id="btnSignOut" style="padding:8px 14px;font-size:13px">退出登录</button>' +
         '<button class="btn btn-ghost" id="btnPrivacy" style="padding:8px 14px;font-size:13px">隐私说明</button>' +
         '<button class="btn btn-ghost" id="btnPurgeCloud" style="padding:8px 14px;font-size:13px;color:#d92b52">清除云端数据</button>' +
+        (st.rememberedCredentials ? '<button class="btn btn-ghost" id="btnForgetCred" style="padding:8px 14px;font-size:13px">取消记住密码</button>' : '') +
         '</div>';
+      if (st.rememberedCredentials) {
+        html += '<div style="font-size:11.5px;color:var(--ink-3);margin-top:6px">已在本机加密保存账号密码，登录过期时会自动重新登录；不想保存可点「取消记住密码」。</div>';
+      }
     } else if (st.needsOnline) {
       html += '<div style="font-size:12px;color:var(--ink-3);line-height:1.7">你现在打开的是离线文件版。云端登录需要浏览器同源环境，改用发布后的线上网址打开就能登录，两台设备会自动接上同一份进度。</div>';
       html += '<div style="margin-top:10px"><button class="btn btn-ghost" id="btnPrivacy" style="padding:8px 14px;font-size:13px">隐私说明</button></div>';
@@ -1280,6 +1284,10 @@
       if (!confirm('退出登录后，本机进度仍然保留，只是不再同步到云端。确定退出？')) return;
       Cloud.signOut().then(function () { toast('已退出登录'); render(); });
     };
+    var bf = $('#btnForgetCred');
+    if (bf) bf.onclick = function () {
+      Cloud.clearCredentials().then(function () { toast('已删除本机记住的账号密码'); render(); });
+    };
   }
 
   /* ---------- 登录 / 注册（邮箱验证码 / 邮箱密码） ---------- */
@@ -1333,6 +1341,9 @@
           '<input class="text-input" id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" /></div>' +
           '<div class="field"><label>密码</label>' +
           '<input class="text-input" id="authPassword" type="password" autocomplete="current-password" placeholder="请输入密码" /></div>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);margin:0 2px 8px;cursor:pointer">' +
+          '<input type="checkbox" id="authRemember" style="width:16px;height:16px;accent-color:var(--primary)" />' +
+          '记住账号密码（本机加密保存，换设备/掉线后自动登录）</label>' +
           '<div id="authErr" style="font-size:12.5px;color:#d92b52;min-height:18px;margin:2px 2px 6px"></div>' +
           '<button class="btn btn-primary btn-block btn-lg" id="authPwdLogin">登 录</button>' +
           '<div style="height:10px"></div>' +
@@ -1371,8 +1382,12 @@
         var btn = $('#authPwdLogin');
         btn.disabled = true;
         btn.textContent = '登录中…';
+        var remember = !!(($('#authRemember') || {}).checked);
         Cloud.signInWithPassword(email, pwd).then(function (res) {
-          return finishSignIn(res, '');
+          // 密码登录且勾选「记住」→ 加密存本机；不勾选则顺手清掉以前的旧凭据
+          return (remember ? Cloud.rememberCredentials(email, pwd) : Cloud.clearCredentials()).then(function () {
+            return finishSignIn(res, '');
+          });
         }).catch(function (e) {
           authError(authErrText(e));
           btn.disabled = false;
@@ -1588,6 +1603,8 @@
         '两部分：① 本机浏览器本地存储（离线也能用）；② 登录状态下同步一份到云端数据库。云端数据库按账号做了行级隔离，服务端强制校验身份，<b>别的家长登录后读不到你的数据</b>。'],
       ['关于 Cookie 与本地存储',
         '本应用不使用广告 Cookie，也不使用第三方统计。浏览器本地存储只做两件事：保存登录状态（免得每次都要输验证码）和缓存学习进度以支持离线。清除浏览器数据会退出登录，重新登录即可从云端取回进度。'],
+      ['记住账号密码（可选）',
+        '只有在密码登录时主动勾选才会启用。密码经 AES-GCM 加密后存在本机，解密密钥保存在浏览器 IndexedDB 且不可导出，明文不会落盘、不会上传、也不会写日志。登录过期或被其它设备顶掉时用它自动重登；点「取消记住密码」或「退出登录」会立即删除。'],
       ['登录时会跳转吗',
         '不会跳到第三方页面，也没有广告或统计插件。验证码直接在当前页填写，整个登录过程不离开本应用。'],
       ['访问权限与分享',
@@ -1650,7 +1667,7 @@
       '<div class="row"><div class="row-main"><div class="row-title">运行方式</div>' +
       '<div class="row-sub">网页 + 云端账号；不登录只存本机，登录后同步上云、仅本人可见</div></div></div>' +
       '<div class="row"><div class="row-main"><div class="row-title">发音来源</div>' +
-      '<div class="row-sub">中文：随软件内置的拼音音节音频（离线可用）；英语：浏览器自带的语音引擎</div></div></div>' +
+      '<div class="row-sub">中文与英语：随软件内置的音频（离线可用，不耗流量）；个别词没有内置音频时用浏览器语音兜底</div></div></div>' +
       '</div>' +
       // ---------- 版本更新记录 ----------
       '<div class="section-title" style="margin:18px 0 8px"><h2 style="font-size:14px">版本更新记录</h2></div>' +
@@ -1679,7 +1696,7 @@
           '</div></div>';
       }).join('') + '</div>' +
       '<div style="font-size:12px;color:var(--ink-3);line-height:1.7;margin-top:12px">' +
-      '中文发音使用上述「普通话拼音音节音频」（公有领域），不是第三方语音引擎；英语发音使用浏览器内置的 Web Speech API。' +
+      '中文发音使用上述「普通话拼音音节音频」（公有领域），不是第三方语音引擎；英语发音使用构建期由开源工具 edge-tts（GPL-3.0）生成的单词音频，随软件内置、离线可用，个别词回退到浏览器内置的 Web Speech API。' +
       '英语词库按课程标准的词汇范围自行整理。完整声明见随附的 THIRD-PARTY-NOTICES.md。</div>' +
       '<div style="height:14px"></div>' +
       '<button class="btn btn-primary btn-block btn-lg" onclick="document.getElementById(\'sheetMask\').hidden=true">关闭</button>';

@@ -78,6 +78,16 @@
   }
 
   var AUDIO_BASE = 'assets/audio/py/';
+  var EN_AUDIO_BASE = 'assets/audio/en/';
+
+  /** 该英文单词/短语有没有内置离线音频 */
+  function hasEnAudio(word) {
+    if (!word || !canAudio()) return false;
+    var map = global.EN_AUDIO || null;
+    if (!map) return false;
+    var key = String(word).trim().toLowerCase();
+    return typeof map[key] === 'string' && !!map[key];
+  }
 
   /* ==================================================================
    * 三、字 → 拼音（词语拆音节用）
@@ -313,9 +323,32 @@
     timer = setTimeout(fin, 2600);
   }
 
+  /** 播放一条完整 URL（内置英语单词音频） */
+  function playUrl(url, rate, cb, token) {
+    if (token != null && token !== SEQ_START) { if (cb) cb(); return; }
+    var a = canAudio() ? getAudio() : null;
+    if (!a || !url) { if (cb) cb(); return; }
+    var done = false;
+    var fin = function () {
+      if (done) return;
+      done = true;
+      a.onended = null;
+      a.onerror = null;
+      if (cb) cb();
+    };
+    try { a.onended = fin; a.onerror = fin; } catch (e) {}
+    try {
+      a.playbackRate = Math.max(0.5, Math.min(2, Number(rate) || 1));
+      a.src = url;
+      var p = a.play();
+      if (p && p.then) p.then(null, fin);
+    } catch (e) { fin(); return; }
+    timer = setTimeout(fin, 4000);
+  }
+
   /**
    * 顺序播放一串步骤
-   * steps: [{k:'de5'} | {w:'的话'} | {t:'xxx', lang, rate} | {gap:240}]
+   * steps: [{k:'de5'} | {w:'的话'} | {t:'xxx', lang, rate} | {url:'...'} | {gap:240}]
    * opts:  { rate, onend, gap(词内音节间隔，默认 40) }
    */
   function playSteps(steps, opts) {
@@ -328,6 +361,7 @@
     steps.forEach(function (st) {
       if (!st) return;
       if (st.gap != null) { list.push({ type: 'gap', ms: st.gap }); return; }
+      if (st.url != null) { list.push({ type: 'url', url: st.url }); return; }
       if (st.t != null) { list.push({ type: 'tts', text: st.t, lang: st.lang, rate: st.rate }); return; }
       var keys = null;
       if (st.w) keys = wordKeys(st.w);
@@ -351,6 +385,7 @@
       if (it.type === 'gap') { timer = setTimeout(step, it.ms); return; }
       if (it.type === 'miss') { step(); return; }
       if (it.type === 'tts') { ttsSay(it.text, { lang: it.lang, rate: it.rate || opts.rate }, step, token); return; }
+      if (it.type === 'url') { playUrl(it.url, opts.rate, step, token); return; }
       playSyl(it.key, opts.rate, step, token);
     };
     step();
@@ -438,8 +473,20 @@
   }
 
   function speakZh(text, rate) { return speakZhCard({ c: text }, { rate: rate || 0.9 }); }
+  /**
+   * 读英文：优先内置离线音频（安卓 WebView / 国产 ROM 多数没有英语 TTS 语音包，
+   * speechSynthesis 对象存在但读不出声，正是「点发音没反应」的根因）；
+   * 没有内置音频（单文件版 / 生僻词）时才回退浏览器 TTS。
+   */
   function speakEn(text, rate) {
-    return speak(text, { lang: 'en-US', rate: rate || 0.92 });
+    var w = String(text == null ? '' : text).trim();
+    if (!w) return speak(w, { lang: 'en-US', rate: rate || 0.92 });
+    if (hasEnAudio(w)) {
+      var file = global.EN_AUDIO[w.toLowerCase()];
+      playSteps([{ url: EN_AUDIO_BASE + file }], { rate: rate || 0.92 });
+      return null;
+    }
+    return speak(w, { lang: 'en-US', rate: rate || 0.92 });
   }
 
   /** 统计信息：本地音频覆盖情况（诊断 / 测试用） */

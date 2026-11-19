@@ -35,6 +35,12 @@
   var TABLE = 'kid_profiles';
   var PUSH_DELAY = 1200;      // 本地改动后多久推送（合并连续答题）
   var SESSION_KEY = 'ebbinghaus.kids.cloud';
+  /* 记住账号密码：密文存 localStorage，解密用的 AES 密钥存 IndexedDB 且不可导出。
+   * 明文密码永不落盘、不打日志、只经官方认证接口发出；用户退出登录立即清除。 */
+  var CRED_KEY = 'ebbinghaus.kids.cloud.cred';
+  var VAULT_DB = 'ebbinghaus-kids-vault';
+  var VAULT_STORE = 'keys';
+  var VAULT_ID = 'cred';
 
   var client = null;
   var sdkPromise = null;
@@ -386,8 +392,12 @@
         }
         return retryRefresh().then(function (s2) {
           if (s2) return acceptSession(s2);
-          setState('signedout');
-          return false;
+          // SDK 会话确实没了：若本机加密存了账号密码，静默重登，不让家长反复输验证码
+          return autoSignIn().then(function (ok) {
+            if (ok) return true;
+            setState('signedout');
+            return false;
+          });
         });
       }
       return acceptSession(s);
@@ -460,6 +470,120 @@
   }
 
   function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* ---------- 记住账号密码（加密存储 + 掉线自动登录） ----------
+   * 明文只存在于内存里一次；落到 localStorage 的是 AES-GCM 密文，
+   * 解密密钥放在 IndexedDB 且生成时标记 extractable=false（无法导出）。
+   * 浏览器不支持 Web Crypto / IndexedDB 时静默降级为「不记住」，不影响使用。
+   */
+  function utf8Bytes(str) {
+    try { if (global.TextEncoder) return Array.prototype.slice.call(new global.TextEncoder().encode(str)); } catch (e) {}
+    var s = unescape(encodeURIComponent(String(str))), out = [];
+    for (var i = 0; i < s.length; i++) out.push(s.charCodeAt(i) & 255);
+    return out;
+  }
+  function bytesUtf8(arr) {
+    try { if (global.TextDecoder) return new global.TextDecoder().decode(new Uint8Array(arr)); } catch (e) {}
+    var s = '';
+    for (var i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]);
+    return decodeURIComponent(escape(s));
+  }
+
+  function openVault(create) {
+    return new Promise(function (resolve, reject) {
+      var idb = global.indexedDB;
+      if (!idb || !global.crypto || !global.crypto.subtle) { reject(new Error('crypto unavailable')); return; }
+      var req;
+      try { req = idb.open(VAULT_DB, 1); } catch (e) { reject(e); return; }
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains(VAULT_STORE)) db.createObjectStore(VAULT_STORE);
+      };
+      req.onerror = function () { reject(req.error || new Error('vault open failed')); };
+      req.onsuccess = function () {
+        var db = req.result;
+        var done = function (val, err) { try { db.close(); } catch (e) {} err ? reject(err) : resolve(val); };
+        try {
+          var tx = db.transaction(VAULT_STORE, 'readonly');
+          var get = tx.objectStore(VAULT_STORE).get(VAULT_ID);
+          get.onerror = function () { done(null, get.error); };
+          get.onsuccess = function () {
+            var key = get.result;
+            if (key || !create) { done(key || null); return; }
+            var gen;
+            try { gen = global.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); }
+            catch (e) { done(null, e); return; }
+            Promise.resolve(gen).then(function (k) {
+              var tx2 = db.transaction(VAULT_STORE, 'readwrite');
+              tx2.objectStore(VAULT_STORE).put(k, VAULT_ID);
+              tx2.oncomplete = function () { done(k); };
+              tx2.onerror = function () { done(null, tx2.error); };
+            }, function (e) { done(null, e); });
+          };
+        } catch (e) { done(null, e); }
+      };
+    });
+  }
+
+  function rememberCredentials(email, password) {
+    var addr = String(email || '').trim(), pwd = String(password || '');
+    if (!addr || !pwd) return Promise.resolve(false);
+    return openVault(true).then(function (key) {
+      if (!key) return false;
+      var iv = new Uint8Array(12);
+      global.crypto.getRandomValues(iv);
+      var plain = utf8Bytes(JSON.stringify({ e: addr, p: pwd, at: Date.now() }));
+      return Promise.resolve(global.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv }, key, new Uint8Array(plain)
+      )).then(function (buf) {
+        global.localStorage.setItem(CRED_KEY, JSON.stringify({
+          v: 1,
+          iv: Array.prototype.slice.call(iv),
+          data: Array.prototype.slice.call(new Uint8Array(buf))
+        }));
+        return true;
+      });
+    }).catch(function () { return false; });
+  }
+
+  function loadCredentials() {
+    var raw;
+    try { raw = global.localStorage.getItem(CRED_KEY); } catch (e) { return Promise.resolve(null); }
+    if (!raw) return Promise.resolve(null);
+    var obj;
+    try { obj = JSON.parse(raw); } catch (e) { return Promise.resolve(null); }
+    if (!obj || obj.v !== 1 || !obj.iv || !obj.data) return Promise.resolve(null);
+    return openVault(false).then(function (key) {
+      if (!key) return null;
+      return Promise.resolve(global.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: new Uint8Array(obj.iv) }, key, new Uint8Array(obj.data)
+      )).then(function (buf) {
+        var c = JSON.parse(bytesUtf8(Array.prototype.slice.call(new Uint8Array(buf))));
+        return (c && c.e && c.p) ? { email: c.e, password: c.p } : null;
+      });
+    }).catch(function () { return null; });
+  }
+
+  function clearCredentials() {
+    try { global.localStorage.removeItem(CRED_KEY); } catch (e) {}
+    return Promise.resolve(true);
+  }
+  function hasRememberedCredentials() {
+    try { return !!global.localStorage.getItem(CRED_KEY); } catch (e) { return false; }
+  }
+
+  /** 用记住的账号密码静默重新登录（token 被另一台设备顶掉 / 长时间不用导致续期失败时） */
+  function autoSignIn() {
+    if (!hasRememberedCredentials()) return Promise.resolve(false);
+    if (!originUsable()) return Promise.resolve(false);
+    return loadCredentials().then(function (c) {
+      if (!c) return false;
+      return signInWithPassword(c.email, c.password).then(function () {
+        recordEvent('auto_login', {});
+        return true;
+      }, function () { return false; });
+    }).catch(function () { return false; });
+  }
 
   function sendCode(email) {
     var addr = String(email || '').trim();
@@ -631,6 +755,7 @@
       session = null;
       if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
       try { global.localStorage.removeItem(SESSION_KEY); } catch (e) {}
+      clearCredentials();   // 退出即删除记住的密码，本机不再留凭据
       setState('signedout');
     };
     if (!client) { done(); return Promise.resolve(); }
@@ -659,6 +784,7 @@
       signedIn: !!session,
       email: email,
       rememberedEmail: remembered,
+      rememberedCredentials: hasRememberedCredentials(),
       lastSyncAt: lastSyncAt,
       error: lastError,
       canUseCloud: originUsable() && configured(),
@@ -762,6 +888,11 @@
     sendCode: sendCode,
     verifyCode: verifyCode,
     signInWithPassword: signInWithPassword,
+    rememberCredentials: rememberCredentials,
+    loadCredentials: loadCredentials,
+    clearCredentials: clearCredentials,
+    hasRememberedCredentials: hasRememberedCredentials,
+    autoSignIn: autoSignIn,
     requestPasswordReset: requestPasswordReset,
     resetPassword: resetPassword,
     signOut: signOut,

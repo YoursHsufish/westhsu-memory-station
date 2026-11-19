@@ -552,6 +552,34 @@ async function main() {
     ok(devA.w.Store.getRec('zh_recog', '一'), 'C14 周期自动同步拉到另一台设备练过的内容');
   }
 
+  /* ================= C15 记住账号密码（加密存储 / 自动重登 / 退出即清） ================= */
+  {
+    const server = makeServer([]);
+    const dev = boot({ mockCloud: (w) => makeClient(server, 'uA') });
+    const w = dev.w;
+
+    ok(typeof w.Cloud.rememberCredentials === 'function', 'C15 提供记住密码接口');
+    ok(w.Cloud.hasRememberedCredentials() === false, 'C15 初始没有记住的凭据');
+
+    // jsdom 无 WebCrypto/IndexedDB 时，应安全降级为「不记住」而不是明文落盘
+    const saved = await w.Cloud.rememberCredentials('kid@example.com', 'secret123');
+    ok(saved === false || typeof saved === 'boolean', 'C15 不支持加密环境时安全降级（返回布尔值）');
+    if (!saved) {
+      ok(w.localStorage.getItem('ebbinghaus.kids.cloud.cred') === null,
+        'C15 加密不可用时绝不写明文凭据到 localStorage');
+    }
+    ok(typeof w.Cloud.autoSignIn === 'function', 'C15 提供自动重登入口');
+
+    const st = w.Cloud.status();
+    ok(typeof st.rememberedCredentials === 'boolean', 'C15 状态里暴露是否记住密码');
+
+    // 模拟已记住：注入密文假对象，验证清除逻辑
+    w.localStorage.setItem('ebbinghaus.kids.cloud.cred', '{"v":1}');
+    ok(w.Cloud.hasRememberedCredentials() === true, 'C15 有密文时状态为真');
+    await w.Cloud.clearCredentials();
+    ok(w.Cloud.hasRememberedCredentials() === false, 'C15 清除后不再有记住的凭据');
+  }
+
   /* ================= 汇总 ================= */
   console.log('');
   let pass = 0;

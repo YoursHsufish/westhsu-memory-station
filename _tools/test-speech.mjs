@@ -38,7 +38,7 @@ function fakeAudio() {
 
 function mk(opts) {
   opts = opts || {};
-  const files = ['js/data-zh.js', 'js/py-dict.js', 'js/audio-manifest.js', 'js/speech.js'];
+  const files = ['js/data-zh.js', 'js/py-dict.js', 'js/audio-manifest.js', 'js/en-audio-manifest.js', 'js/speech.js'];
   const shared = { log: [], spoken: [] };
   const A = fakeAudio();
   A.log = shared.log;
@@ -146,12 +146,27 @@ async function main() {
     ok(spoken.length === 1 && /标准/.test(spoken[0]), 'G2 改由 TTS 读整词', spoken[0]);
   }
 
-  /* H. 英语走 TTS */
+  /* H. 英语：优先内置离线音频，缺音频时回退 TTS */
   {
-    const { w, spoken } = mk();
+    const { w, log, spoken } = mk();
     w.Speech.speakEn('apple', 0.9);
     await wait(200);
-    ok(spoken.indexOf('apple') >= 0, 'H1 英语单词交给 TTS', spoken.join('|'));
+    ok(log.some((u) => u.indexOf('assets/audio/en/') >= 0 && /apple\.mp3/.test(u)),
+      'H1 英语单词优先播内置离线音频', log.join('|'));
+    ok(spoken.length === 0, 'H2 有内置音频时不调用系统 TTS', spoken.join('|'));
+  }
+  {
+    const { w, log, spoken } = mk();
+    w.Speech.speakEn('not_in_dictionary_xyz', 0.9);
+    await wait(1000);
+    ok(spoken.indexOf('not_in_dictionary_xyz') >= 0, 'H3 词库外单词回退系统 TTS', spoken.join('|'));
+    ok(!log.some((u) => u.indexOf('assets/audio/en/') >= 0), 'H4 词库外不播不存在的音频');
+  }
+  {
+    const { w, log } = mk({ noAudio: true });
+    w.Speech.speakEn('apple', 0.9);
+    await wait(1000);
+    ok(!log.some((u) => u.indexOf('assets/audio/en/') >= 0), 'H5 单文件版（无音频目录）不播离线音频');
   }
 
   /* I. stop() 能打断后续音节 */

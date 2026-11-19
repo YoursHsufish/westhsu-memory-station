@@ -273,7 +273,7 @@ async function main() {
   await wait(80);
   ok(/小雨/.test(text(w)) && /学习设置/.test(text(w)), 'T9 我的页显示档案与设置');
   // 发音说明必须与新实现一致（中文=内置音节音频，英语=浏览器引擎）
-  ok(/内置音节音频/.test(text(w)), 'T9 底部说明指明中文用内置音节音频');
+  ok(/内置音频/.test(text(w)) && /离线也能读/.test(text(w)), 'T9 底部说明指明中英文都用内置离线音频');
   ok(!/语音由浏览器内置引擎提供/.test(text(w)), 'T9 不再写「语音由浏览器内置引擎提供」');
   ok($$(w, '[data-editkey]').length === 5, 'T9 5 个可调设置项（步进器，不再是滑条）');
   const nameBefore = w.Store.activeProfile().name;
